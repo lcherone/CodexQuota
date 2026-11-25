@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Codex Quota">
+  <rect x="3" y="3" width="58" height="58" rx="14" fill="#145245"/>
+  <circle cx="32" cy="32" r="16.5" fill="none" stroke="#F5F0E3" stroke-opacity="0.28" stroke-width="3.4"/>
+  <path d="M18.2 40.6 A16.6 16.6 0 1 1 44.6 21.4" fill="none" stroke="#F5F0E3" stroke-width="3.4" stroke-linecap="round"/>
+</svg>
