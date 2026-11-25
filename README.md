@@ -1,6 +1,6 @@
-# Codex Quota
+# CodexQuota
 
-A menu-bar panel for pacing a Codex weekly allowance on this Mac. It keeps more than one account, each with its own Codex home. The status item shows today's slice as a percent of the week. The panel shows that figure, whether the day and week are ahead of an even pace, the accounts, and week history. The Dock icon stays hidden. Click the figure to show or hide the panel.
+A menu-bar panel for pacing a Codex weekly allowance on Mac. It shows more than one account, each with its own Codex home. The status item shows today's slice as a percent of the week. The panel shows that figure, whether the day and week are ahead of an even pace, the accounts, and week history.
 
 Sign-in opens in the browser. Tokens stay in that account's Codex home. The library under `~/Library/Application Support/CodexQuota` stores readings, not tokens.
 
