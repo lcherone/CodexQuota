@@ -39,8 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppDelegate.shared = self
     }
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
         NSApp.applicationIconImage = AppIcon.image()
         status.install(model: .shared)
         AppModel.shared.start()
@@ -54,23 +58,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !flag {
             openMain?()
         }
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         return true
     }
 }
 
 @MainActor
-final class StatusController: NSObject, NSMenuDelegate {
+final class StatusController: NSObject {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private weak var model: AppModel?
     private var timer: Timer?
 
     func install(model: AppModel) {
         self.model = model
+        item.menu = nil
         item.button?.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
-        let menu = NSMenu()
-        menu.delegate = self
-        item.menu = menu
+        item.button?.target = self
+        item.button?.action = #selector(toggleWindow)
         applyTitle()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -80,75 +84,30 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
     }
 
-    func menuWillOpen(_ menu: NSMenu) {
-        menu.removeAllItems()
-        guard let model else { return }
-        if model.store.accounts.isEmpty {
-            let empty = NSMenuItem(title: "No accounts yet", action: nil, keyEquivalent: "")
-            empty.isEnabled = false
-            menu.addItem(empty)
-        } else {
-            for account in model.store.accounts {
-                let entry = NSMenuItem(title: line(for: account, model: model), action: #selector(selectAccount(_:)), keyEquivalent: "")
-                entry.target = self
-                entry.representedObject = account.id
-                entry.state = model.selectedAccount?.id == account.id ? .on : .off
-                menu.addItem(entry)
+    @objc private func toggleWindow() {
+        NSApp.setActivationPolicy(.accessory)
+        let windows = mainWindows()
+        if windows.contains(where: { $0.isVisible && !$0.isMiniaturized }) {
+            for window in windows where window.isVisible {
+                window.orderOut(nil)
             }
+            return
         }
-        menu.addItem(.separator())
-        add("Open Codex Quota", #selector(openMainWindow), menu)
-        add("Refresh", #selector(refreshAccounts), menu, key: "r")
-        menu.addItem(.separator())
-        add("Quit Codex Quota", #selector(quit), menu, key: "q")
-    }
-
-    @objc private func selectAccount(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        model?.select(id)
-        openMainWindow()
-        applyTitle()
-    }
-
-    @objc private func openMainWindow() {
-        NSApp.setActivationPolicy(.regular)
         AppDelegate.shared?.openMain?()
-        NSApp.activate(ignoringOtherApps: true)
+        for window in mainWindows() {
+            window.makeKeyAndOrderFront(nil)
+        }
+        NSApp.activate()
     }
 
-    @objc private func refreshAccounts() {
-        Task { await model?.refreshAll() }
-    }
-
-    @objc private func quit() {
-        NSApp.terminate(nil)
-    }
-
-    private func add(_ title: String, _ action: Selector, _ menu: NSMenu, key: String = "") {
-        let entry = NSMenuItem(title: title, action: action, keyEquivalent: key)
-        entry.target = self
-        menu.addItem(entry)
+    private func mainWindows() -> [NSWindow] {
+        NSApp.windows.filter { window in
+            window.title == "Codex Quota" || window.canBecomeMain
+        }
     }
 
     private func applyTitle() {
         item.button?.title = model?.menuTitle ?? "Quota"
-    }
-
-    private func line(for account: AccountRecord, model: AppModel) -> String {
-        if model.authRequired.contains(account.id) {
-            return "\(account.label) — sign in"
-        }
-        guard let latest = model.latestSample(for: account.id) else {
-            return account.label
-        }
-        let pace = model.paceReport(for: account.id, sample: latest, now: Date())
-        let title = Pace.menuTitle(
-            todaySlicePercent: pace?.todaySlicePercent,
-            todayKind: pace?.todayKind ?? .unknown,
-            dayStatus: pace?.dayStatus ?? .unknown,
-            weeklyUsed: latest.usedPercent
-        )
-        return "\(account.label) — \(title)"
     }
 }
 

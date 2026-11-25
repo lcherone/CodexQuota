@@ -1,14 +1,14 @@
 # Codex Quota
 
-A menu-bar and Dock app for pacing Codex weekly allowance. This is the decided design for the first version. There is no follow-up question left open in this plan.
+A menu-bar app for pacing Codex weekly allowance. This is the decided design for the first version. There is no follow-up question left open in this plan.
 
 ## Stack
 
-Swift 6 and SwiftUI on macOS 14, with an AppKit status item. The package is `CodexQuotaCore` (pacing, history, app-server client) and the `CodexQuota` executable (window, Dock, menu bar).
+Swift 6 and SwiftUI on macOS 14, with an AppKit status item. The package is `CodexQuotaCore` (pacing, history, app-server client) and the `CodexQuota` executable (window and menu bar).
 
 GPUI is not the UI. `~/testingapp` shows a GPUI 0.2.2 window and a CEF browser, and it does not create a menu-bar status item. This Mac has Swift and does not have `rustc` or `cargo`, so a GPUI app would not compile here. Login does not need that embedded browser.
 
-The Dock icon stays because the app is a regular application: `LSUIElement` is not set. Closing the window leaves the status item running. Clicking the Dock, or "Open Codex Quota" in the menu, brings the window back.
+The Dock icon stays hidden while the app is running. `LSUIElement` is true, and the process uses the accessory activation policy. The status item stays visible and shows the usage figure. Clicking it opens the main window, and clicking it again while that window is visible closes it. Closing the window leaves the status item running.
 
 Build and test from `~/CodexQuota`:
 
@@ -185,7 +185,7 @@ Week stats group samples by `resetsAt`. A finished week uses its highest `usedPe
 
 ## UI states
 
-Light and dark follow the system appearance. The window is the product. The menu is the glance: `49%`, `154% over`, `62% wk` when today is still unknown, `Sign in` when the selected account needs ChatGPT, and `Quota` when there is nothing to show.
+Light and dark follow the system appearance. The window is the product. The status item is the glance: `49%`, `154% over`, `62% wk` when today is still unknown, `Sign in` when the selected account needs ChatGPT, and `Quota` when there is nothing to show. Clicking that figure opens or closes the window.
 
 | State | What you see |
 | --- | --- |
@@ -213,5 +213,5 @@ The stats card is lifetime tokens, peak day, recorded tokens, average week, and 
 2. `store.json` history, 26-week retention, and `0600` writes.
 3. Stdio session: `initialize`, `initialized`, the three reads, login, logout. `swift run CodexQuotaChecks` runs that against the mock, including the exact login and initialize fields.
 4. SwiftUI window and AppKit status item, including empty, signed-out, stale, and error presentation.
-5. `./scripts/build-app.sh` produces `build/CodexQuota.app`, signed ad hoc, with a Dock icon.
+5. `./scripts/build-app.sh` produces `build/CodexQuota.app`, signed ad hoc, with no Dock icon.
 6. On this Mac, add an account and choose Sign in. The browser completes ChatGPT login into that account's home. Refresh reads the live allowance through the user's own Codex CLI. This repo does not do that step.
