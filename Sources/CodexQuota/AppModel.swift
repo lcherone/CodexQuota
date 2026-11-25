@@ -74,6 +74,14 @@ final class AppModel {
         persist()
     }
 
+    func setAppearance(_ appearance: PanelAppearance) {
+        guard store.appearance != appearance else { return }
+        var copy = store
+        copy.appearance = appearance
+        store = copy
+        persist()
+    }
+
     func addAccount(label: String) {
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = String((trimmed.isEmpty ? suggestedLabel() : trimmed).prefix(40))

@@ -185,7 +185,7 @@ Week stats group samples by `resetsAt`. A finished week uses its highest `usedPe
 
 ## UI states
 
-Light and dark follow the system appearance. The panel is black with white text in dark mode, and white with black text in light mode, with hairline rules and no coloured cards. The status item is the glance: `49%`, `154% over`, `62% wk` when today is still unknown, `Sign in` when the selected account needs ChatGPT, and `Quota` when there is nothing to show. Clicking that figure shows or hides the panel.
+The panel footer offers System, Light, and Dark. System follows the Mac appearance. Light is a white panel with black text, and Dark is a black panel with white text, both with hairline rules and no coloured cards. The choice is `appearance` in `store.json` (`system`, `light`, or `dark`). A library written before that field existed stays on System. The status item is the glance: `49%`, `154% over`, `62% wk` when today is still unknown, `Sign in` when the selected account needs ChatGPT, and `Quota` when there is nothing to show. Clicking that figure shows or hides the panel.
 
 | State | What you see |
 | --- | --- |

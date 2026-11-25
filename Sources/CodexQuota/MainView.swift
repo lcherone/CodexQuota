@@ -9,7 +9,23 @@ struct MainView: View {
     @State private var draft = ""
     @State private var confirmingRemoval = false
 
-    private var palette: Palette { Palette.current(scheme) }
+    private var palette: Palette { Palette.current(resolvedScheme) }
+
+    private var resolvedScheme: ColorScheme {
+        switch model.store.appearance {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return scheme
+        }
+    }
+
+    private var forcedScheme: ColorScheme? {
+        switch model.store.appearance {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return nil
+        }
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -33,6 +49,8 @@ struct MainView: View {
             .fixedSize(horizontal: true, vertical: true)
         }
         .background(palette.background)
+        .preferredColorScheme(forcedScheme)
+        .background(AppearanceAnchor(choice: model.store.appearance))
         .onChange(of: model.selectedAccount?.id) {
             confirmingRemoval = false
             adding = false
@@ -46,17 +64,31 @@ struct MainView: View {
     }
 
     private var footer: some View {
-        HStack {
-            Text("Codex Quota")
-            Spacer()
+        HStack(spacing: 8) {
+            HStack(spacing: 0) {
+                appearanceButton(.system, "System")
+                appearanceButton(.light, "Light")
+                appearanceButton(.dark, "Dark")
+            }
+            Spacer(minLength: 8)
             Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(palette.ink)
         }
-        .font(.system(size: 11))
-        .foregroundStyle(palette.secondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private func appearanceButton(_ choice: PanelAppearance, _ title: String) -> some View {
+        let selected = model.store.appearance == choice
+        return Button(title) { model.setAppearance(choice) }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: selected ? .semibold : .regular))
+            .foregroundStyle(selected ? palette.ink : palette.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .overlay(Rectangle().stroke(selected ? palette.hairline : Color.clear, lineWidth: 1))
     }
 
     private var emptyState: some View {
@@ -516,5 +548,38 @@ struct MainView: View {
         let hours = Int((minutes / 60).rounded())
         if hours == 5 { return "Five-hour window" }
         return "\(hours)-hour window"
+    }
+}
+
+private struct AppearanceAnchor: NSViewRepresentable {
+    var choice: PanelAppearance
+
+    func makeNSView(context: Context) -> AppearanceView {
+        let view = AppearanceView()
+        view.choice = choice
+        return view
+    }
+
+    func updateNSView(_ view: AppearanceView, context: Context) {
+        view.choice = choice
+    }
+}
+
+private final class AppearanceView: NSView {
+    var choice: PanelAppearance = .system {
+        didSet { apply() }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        apply()
+    }
+
+    private func apply() {
+        window?.appearance = switch choice {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
     }
 }

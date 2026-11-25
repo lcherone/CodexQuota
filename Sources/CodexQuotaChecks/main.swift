@@ -347,6 +347,7 @@ enum HistoryChecks {
         roundTripPermissionsAndCoalescing()
         corruptLibraryIsKeptBesideAnEmptyOne()
         oldSamplesAreDropped()
+        appearanceSurvivesAndOlderLibrariesStaySystem()
     }
 
     static func roundTripPermissionsAndCoalescing() {
@@ -390,6 +391,27 @@ enum HistoryChecks {
             }
         } catch {
             Check.fail("corrupt library failed \(error)")
+        }
+    }
+
+    static func appearanceSurvivesAndOlderLibrariesStaySystem() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let history = HistoryStore(directory: directory)
+        let older = """
+        {"version":1,"accounts":[],"samples":[]}
+        """
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data(older.utf8).write(to: history.fileURL)
+            let loaded = try history.load()
+            Check.equal(loaded.store.appearance, .system)
+            var store = loaded.store
+            store.appearance = .dark
+            try history.save(store)
+            let saved = try history.load()
+            Check.equal(saved.store.appearance, .dark)
+        } catch {
+            Check.fail("appearance library failed \(error)")
         }
     }
 

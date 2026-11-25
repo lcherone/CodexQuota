@@ -112,16 +112,65 @@ public struct UsageSample: Codable, Equatable, Sendable {
     }
 }
 
+public enum PanelAppearance: String, Codable, Equatable, Sendable, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    public var id: String { rawValue }
+}
+
 public struct StoreFile: Codable, Equatable, Sendable {
     public var version: Int
     public var selectedAccountId: String?
     public var accounts: [AccountRecord]
     public var samples: [UsageSample]
+    public var appearance: PanelAppearance
 
     public static let currentVersion = 1
 
+    public init(
+        version: Int,
+        selectedAccountId: String?,
+        accounts: [AccountRecord],
+        samples: [UsageSample],
+        appearance: PanelAppearance = .system
+    ) {
+        self.version = version
+        self.selectedAccountId = selectedAccountId
+        self.accounts = accounts
+        self.samples = samples
+        self.appearance = appearance
+    }
+
     public static func empty() -> StoreFile {
         StoreFile(version: currentVersion, selectedAccountId: nil, accounts: [], samples: [])
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case version
+        case selectedAccountId
+        case accounts
+        case samples
+        case appearance
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        selectedAccountId = try container.decodeIfPresent(String.self, forKey: .selectedAccountId)
+        accounts = try container.decode([AccountRecord].self, forKey: .accounts)
+        samples = try container.decode([UsageSample].self, forKey: .samples)
+        appearance = try container.decodeIfPresent(PanelAppearance.self, forKey: .appearance) ?? .system
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(version, forKey: .version)
+        try container.encodeIfPresent(selectedAccountId, forKey: .selectedAccountId)
+        try container.encode(accounts, forKey: .accounts)
+        try container.encode(samples, forKey: .samples)
+        try container.encode(appearance, forKey: .appearance)
     }
 }
 
