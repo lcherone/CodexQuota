@@ -4,11 +4,11 @@ A menu-bar app for pacing Codex weekly allowance. This is the decided design for
 
 ## Stack
 
-Swift 6 and SwiftUI on macOS 14, with an AppKit status item. The package is `CodexQuotaCore` (pacing, history, app-server client) and the `CodexQuota` executable (window and menu bar).
+Swift 6 and SwiftUI on macOS 14, with an AppKit status item. The package is `CodexQuotaCore` (pacing, history, app-server client) and the `CodexQuota` executable (menu-bar panel).
 
 GPUI is not the UI. `~/testingapp` shows a GPUI 0.2.2 window and a CEF browser, and it does not create a menu-bar status item. This Mac has Swift and does not have `rustc` or `cargo`, so a GPUI app would not compile here. Login does not need that embedded browser.
 
-The Dock icon stays hidden while the app is running. `LSUIElement` is true, and the process uses the accessory activation policy. The status item stays visible and shows the usage figure. Clicking it opens the main window, and clicking it again while that window is visible closes it. Closing the window leaves the status item running.
+The Dock icon stays hidden while the app is running. `LSUIElement` is true, and the process uses the accessory activation policy. The status item stays visible and shows the usage figure. Clicking it shows a borderless panel under that item, and clicking it again hides the panel. There is no desktop window and no title-bar traffic lights.
 
 Build and test from `~/CodexQuota`:
 
@@ -185,15 +185,15 @@ Week stats group samples by `resetsAt`. A finished week uses its highest `usedPe
 
 ## UI states
 
-Light and dark follow the system appearance. The window is the product. The status item is the glance: `49%`, `154% over`, `62% wk` when today is still unknown, `Sign in` when the selected account needs ChatGPT, and `Quota` when there is nothing to show. Clicking that figure opens or closes the window.
+Light and dark follow the system appearance. The panel is black with white text in dark mode, and white with black text in light mode, with hairline rules and no coloured cards. The status item is the glance: `49%`, `154% over`, `62% wk` when today is still unknown, `Sign in` when the selected account needs ChatGPT, and `Quota` when there is nothing to show. Clicking that figure shows or hides the panel.
 
 | State | What you see |
 | --- | --- |
-| No accounts | Empty window. Add Personal, then Work, or any other name. |
+| No accounts | Empty panel. Add Personal, then Work, or any other name. |
 | Added, never read | "Sign in to read this week", plus Sign in. |
-| Signing in | The browser is open. The window waits up to three minutes. |
-| Signed out | Sign-in is the primary card. The last reading stays visible as a last-week line. |
-| Ready | Hero is today's slice percent. Copy says whether today is ahead, on, or inside the slice, and whether the week is ahead of or behind an even split. Seven columns, reset line, room line. |
+| Signing in | The browser is open. The panel waits up to three minutes. |
+| Signed out | Sign-in is the primary line. The last reading stays visible as a last-week line. |
+| Ready | Today's slice percent is the large figure. Copy says whether today is ahead, on, or inside the slice, and whether the week is ahead of or behind an even split. Seven day figures, reset line, room line. |
 | Estimated | Same layout, with "estimated from daily tokens". |
 | Partial | Hero shows a minimum (`≥14%`) and does not call the day ahead unless that minimum already is. |
 | No 7-day window | The account is signed in. The banner says the 7-day allowance was not included. Token stats can still update. |
@@ -205,13 +205,13 @@ Light and dark follow the system appearance. The window is the product. The stat
 | Stale | After 15 minutes: "This reading is getting old." |
 | Library problem | The previous file was kept, or this version cannot read it. |
 
-The stats card is lifetime tokens, peak day, recorded tokens, average week, and up to eight week bars. Removing an account confirms first, and only deletes a home the app created.
+The weeks section is lifetime tokens, peak day, recorded tokens, average week, and up to eight week rows. Removing an account confirms first, and only deletes a home the app created.
 
 ## Build sequence
 
 1. Core types for the app-server JSON, the weekly-window parser, and London pacing. Locked with the numeric example above.
 2. `store.json` history, 26-week retention, and `0600` writes.
 3. Stdio session: `initialize`, `initialized`, the three reads, login, logout. `swift run CodexQuotaChecks` runs that against the mock, including the exact login and initialize fields.
-4. SwiftUI window and AppKit status item, including empty, signed-out, stale, and error presentation.
+4. Menu-bar panel and AppKit status item, including empty, signed-out, stale, and error presentation.
 5. `./scripts/build-app.sh` produces `build/CodexQuota.app`, signed ad hoc, with no Dock icon.
 6. On this Mac, add an account and choose Sign in. The browser completes ChatGPT login into that account's home. Refresh reads the live allowance through the user's own Codex CLI. This repo does not do that step.
