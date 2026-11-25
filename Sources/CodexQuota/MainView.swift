@@ -29,23 +29,24 @@ struct MainView: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    if let note = model.libraryNote {
-                        noteLine(note)
-                        hairline
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if let note = model.libraryNote {
+                            noteLine(note)
+                        }
+                        if model.store.accounts.isEmpty {
+                            emptyState
+                        } else if let account = model.selectedAccount {
+                            accountBody(account, now: context.date)
+                        }
                     }
-                    if model.store.accounts.isEmpty {
-                        emptyState
-                    } else if let account = model.selectedAccount {
-                        accountBody(account, now: context.date)
-                    }
-                    hairline
-                    footer
                 }
+                .frame(maxHeight: 520)
+                hairline
+                footer
             }
-            .frame(width: 328)
-            .frame(maxHeight: 560)
+            .frame(width: 360)
             .fixedSize(horizontal: true, vertical: true)
         }
         .background(palette.background)
@@ -94,15 +95,22 @@ struct MainView: View {
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("No accounts yet.")
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(palette.ink)
-            Text("Add a personal or work account. Sign-in opens in the browser, and the Codex home stays on this Mac.")
+            Text("Each account keeps its own Codex home on this Mac.")
                 .font(.system(size: 12))
                 .foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            addForm
+            if adding {
+                addForm
+            } else {
+                plainButton("Add account") {
+                    draft = model.suggestedLabel()
+                    adding = true
+                }
+            }
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     private func accountBody(_ account: AccountRecord, now: Date) -> some View {
@@ -126,13 +134,12 @@ struct MainView: View {
             }
             hairline
             if model.authRequired.contains(account.id) {
-                signedOut(account, sample: sample, pace: pace)
-            } else if sample == nil && model.phase[account.id] == nil {
+                signedOut(account, sample: sample, pace: pace, now: now)
+            } else if sample == nil {
                 waiting(account)
             } else {
                 todaySection(sample: sample, pace: pace)
                 if let pace {
-                    hairline
                     paceSection(pace)
                 }
                 if let sample, let reached = sample.reached {
@@ -175,119 +182,146 @@ struct MainView: View {
             Text(metaLine(account, sample: sample))
                 .font(.system(size: 11))
                 .foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
     }
 
     private func metaLine(_ account: AccountRecord, sample: UsageSample?) -> String {
-        var parts = [planLabel(sample?.planType)]
-        if let email = sample?.email { parts.append(email) }
-        if let sample { parts.append(LondonClock.checkedLine(sample.sampledAt)) }
-        if model.authRequired.contains(account.id) { parts.append("Sign in") }
+        var parts: [String] = []
+        if let sample {
+            parts.append(planLabel(sample.planType))
+            if let email = sample.email { parts.append(email) }
+            parts.append(LondonClock.checkedLine(sample.sampledAt))
+        } else if model.authRequired.contains(account.id) {
+            parts.append("Signed out")
+        } else {
+            parts.append("No reading yet")
+        }
         return parts.joined(separator: " · ")
     }
 
     private func waiting(_ account: AccountRecord) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Sign in to read this week")
+            Text(model.phase[account.id] == .refreshing ? "Checking \(account.label)" : "No reading yet")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(palette.ink)
-            Text("Codex Quota asks the Codex app server for the weekly allowance. The browser sign-in belongs to \(account.label).")
+            Text("Refresh reads the allowance. Sign in if Codex asks for this account.")
                 .font(.system(size: 12))
                 .foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
-    private func signedOut(_ account: AccountRecord, sample: UsageSample?, pace: PaceReport?) -> some View {
+    private func signedOut(_ account: AccountRecord, sample: UsageSample?, pace: PaceReport?, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Sign in to \(account.label)")
+            Text("Signed out")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(palette.ink)
-            Text("The previous reading stays on this Mac until the next sign-in.")
+            Text("The last reading stays on this Mac.")
                 .font(.system(size: 12))
                 .foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             if let pace {
-                Text("Last week reading \(Int(pace.weeklyUsedPercent.rounded()))%, reset \(LondonClock.resetLine(pace.reset)).")
+                Text(lastReading(pace, now: now))
                     .font(.system(size: 12))
                     .foregroundStyle(palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
             } else if let used = sample?.usedPercent {
-                Text("Last week reading \(Int(used.rounded()))%.")
+                Text("Last reading \(Int(used.rounded()))%.")
                     .font(.system(size: 12))
                     .foregroundStyle(palette.ink)
             }
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private func lastReading(_ pace: PaceReport, now: Date) -> String {
+        let used = Int(pace.weeklyUsedPercent.rounded())
+        if pace.reset > now {
+            return "Last reading \(used)%. Resets \(LondonClock.resetLine(pace.reset))."
+        }
+        return "Last reading \(used)%. Reset \(LondonClock.resetLine(pace.reset))."
     }
 
     private func todaySection(sample: UsageSample?, pace: PaceReport?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionTitle("Today")
-            Text(heroNumber(pace: pace, sample: sample))
-                .font(.system(size: 28, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(palette.ink)
-                .accessibilityLabel(heroAccess(pace: pace, sample: sample))
-            Text(heroCaption(pace))
-                .font(.system(size: 12))
-                .foregroundStyle(palette.ink)
-            Text(daySentence(pace))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 16) {
+                metricBlock(
+                    "Today",
+                    heroNumber(pace: pace, sample: sample),
+                    heroCaption(pace),
+                    access: heroAccess(pace: pace, sample: sample)
+                )
+                metricBlock(
+                    "Week",
+                    weekNumber(pace: pace, sample: sample),
+                    weekCaption(pace)
+                )
+                Spacer(minLength: 0)
+            }
+            Text(statusLine(pace))
                 .font(.system(size: 12))
                 .foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let pace {
-                Text("Week \(Int(pace.weeklyUsedPercent.rounded()))% used. \(weekSentence(pace))")
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if let used = sample?.usedPercent {
-                Text("Week \(Int(used.rounded()))% used.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.secondary)
-            }
             if let minutes = sample?.shortDurationMins, let used = sample?.shortUsedPercent {
                 Text("\(shortLabel(minutes)) \(Int(used.rounded()))% used.")
                     .font(.system(size: 12))
                     .foregroundStyle(palette.secondary)
             }
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private func metricBlock(_ title: String, _ value: String, _ caption: String, access: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            sectionTitle(title)
+            Text(value)
+                .font(.system(size: 28, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(palette.ink)
+                .accessibilityLabel(access ?? "\(title) \(value). \(caption)")
+            Text(caption)
+                .font(.system(size: 11))
+                .foregroundStyle(palette.secondary)
+                .lineLimit(2)
+                .frame(width: 148, alignment: .leading)
+        }
     }
 
     private func paceSection(_ pace: PaceReport) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            sectionTitle("Pace")
-            Text(pace.weekHasRoom ? "Room later this week" : "Tight later this week")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(palette.ink)
-            Text(roomSentence(pace))
-                .font(.system(size: 12))
-                .foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 0) {
+            HStack(spacing: 2) {
                 ForEach(pace.slices, id: \.index) { slice in
-                    VStack(spacing: 2) {
-                        Text(weekday(slice.midpoint))
+                    let current = slice.index == pace.todayIndex
+                    VStack(spacing: 1) {
+                        Text(weekday(slice.start))
                         Text(sliceFigure(slice))
                             .monospacedDigit()
                     }
-                    .font(.system(size: 10, weight: slice.index == pace.todayIndex ? .semibold : .regular))
-                    .foregroundStyle(slice.index == pace.todayIndex ? palette.ink : palette.secondary)
+                    .font(.system(size: 11, weight: current ? .semibold : .regular))
+                    .foregroundStyle(current ? palette.ink : palette.secondary)
                     .frame(maxWidth: .infinity)
-                    .accessibilityLabel("\(LondonClock.dayLabel(slice.midpoint)) \(slice.points.map { "\(Int($0.rounded())) percent of the week" } ?? "no reading")")
+                    .padding(.vertical, 4)
+                    .overlay(Rectangle().stroke(current ? palette.hairline : Color.clear, lineWidth: 1))
+                    .accessibilityLabel("\(LondonClock.dayLabel(slice.start)) \(slice.points.map { "\(Int($0.rounded())) percent of the week" } ?? "no reading")")
                 }
             }
-            Text("Each slice is \(String(format: "%.1f", pace.sliceBudget))% of the week. Reset \(LondonClock.resetLine(pace.reset)).")
+            Text("\(pace.weekHasRoom ? "Room later this week" : "Tight later this week"). \(roomSentence(pace))")
+                .font(.system(size: 12))
+                .foregroundStyle(palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Boxed slice is in progress. Numbers are % of the week. Resets \(LondonClock.resetLine(pace.reset)).")
                 .font(.system(size: 11))
                 .foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
     private var accountsSection: some View {
@@ -324,7 +358,8 @@ struct MainView: View {
                 }
             }
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private func accountRow(_ account: AccountRecord) -> some View {
@@ -334,15 +369,13 @@ struct MainView: View {
             model.select(account.id)
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(account.label)
-                        .font(.system(size: 12, weight: selected ? .semibold : .regular))
-                        .foregroundStyle(palette.ink)
-                    Text(rowSubtitle(account))
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.secondary)
-                        .lineLimit(1)
-                }
+                Text(account.label)
+                    .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(palette.ink)
+                Text(rowSubtitle(account))
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.secondary)
+                    .lineLimit(1)
                 Spacer(minLength: 8)
                 Text(accountFigure(account, sample: sample))
                     .font(.system(size: 12, weight: .medium))
@@ -350,53 +383,65 @@ struct MainView: View {
                     .foregroundStyle(palette.ink)
             }
             .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.vertical, 3)
             .overlay(Rectangle().stroke(selected ? palette.hairline : Color.clear, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
 
     private func historySection(_ totals: UsageTotals, weeks: [WeekStat]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionTitle("Weeks")
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                sectionTitle("Weeks")
+                Spacer()
+                Text(totals.weeks == 1 ? "1 in the library" : "\(totals.weeks) in the library")
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.secondary)
+            }
             if weeks.isEmpty {
                 Text("No week history yet.")
                     .font(.system(size: 12))
                     .foregroundStyle(palette.secondary)
             } else {
-                ForEach(Array(weeks.prefix(8))) { week in
-                    HStack {
-                        Text(week.complete ? "Week ending \(LondonClock.dayLabel(week.resetsAt))" : "This week")
+                ForEach(Array(weeks.prefix(6))) { week in
+                    HStack(spacing: 8) {
+                        Text(week.complete ? "Ended \(LondonClock.dayLabel(week.resetsAt))" : "Resets \(LondonClock.dayLabel(week.resetsAt))")
                             .foregroundStyle(palette.ink)
+                            .lineLimit(1)
                         Spacer(minLength: 8)
                         Text("\(Int(week.usedPercent.rounded()))%")
                             .monospacedDigit()
                             .foregroundStyle(palette.ink)
+                            .frame(width: 40, alignment: .trailing)
                     }
                     .font(.system(size: 12))
                 }
             }
-            statRow("Lifetime tokens", tokenText(totals.lifetimeTokens))
-            statRow("Peak day", tokenText(totals.peakDailyTokens))
-            statRow("Recorded tokens", tokenText(totals.recordedTokens))
-            statRow("Average week", totals.averageWeeklyPercent.map { "\(Int($0.rounded()))%" } ?? "—")
-            Text(totals.weeks == 1 ? "1 week in the library." : "\(totals.weeks) weeks in the library.")
-                .font(.system(size: 11))
-                .foregroundStyle(palette.secondary)
+            HStack(alignment: .top, spacing: 0) {
+                summaryCell("Lifetime", tokenText(totals.lifetimeTokens))
+                summaryCell("Peak day", tokenText(totals.peakDailyTokens))
+                summaryCell("Recorded", tokenText(totals.recordedTokens))
+                summaryCell("Average", totals.averageWeeklyPercent.map { "\(Int($0.rounded()))%" } ?? "—")
+            }
+            .padding(.top, 4)
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
-    private func statRow(_ title: String, _ value: String) -> some View {
-        HStack {
+    private func summaryCell(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
             Text(title)
+                .font(.system(size: 10))
                 .foregroundStyle(palette.secondary)
-            Spacer(minLength: 8)
+                .lineLimit(1)
             Text(value)
+                .font(.system(size: 12, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(palette.ink)
+                .lineLimit(1)
         }
-        .font(.system(size: 12))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var addForm: some View {
@@ -405,6 +450,7 @@ struct MainView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
                 .foregroundStyle(palette.ink)
+                .tint(palette.ink)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
                 .overlay(Rectangle().stroke(palette.hairline, lineWidth: 1))
@@ -415,9 +461,6 @@ struct MainView: View {
                 }
                 plainButton("Cancel") { adding = false }
             }
-            Text("Sign-in happens after you add it.")
-                .font(.system(size: 11))
-                .foregroundStyle(palette.secondary)
         }
     }
 
@@ -435,7 +478,7 @@ struct MainView: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
     }
 
     private func plainButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
@@ -448,7 +491,7 @@ struct MainView: View {
     }
 
     private func rowSubtitle(_ account: AccountRecord) -> String {
-        if model.authRequired.contains(account.id) { return "Sign in" }
+        if model.authRequired.contains(account.id) { return "Signed out" }
         if let email = model.latestSample(for: account.id)?.email { return email }
         switch model.phase[account.id] {
         case .refreshing: return "Checking"
@@ -459,7 +502,6 @@ struct MainView: View {
     }
 
     private func accountFigure(_ account: AccountRecord, sample: UsageSample?) -> String {
-        if model.authRequired.contains(account.id) { return "Sign in" }
         guard let used = sample?.usedPercent else { return "—" }
         return "\(Int(used.rounded()))%"
     }
@@ -475,8 +517,27 @@ struct MainView: View {
     private func sliceFigure(_ slice: PaceSlice) -> String {
         guard let points = slice.points else { return "—" }
         let number = Int(points.rounded())
-        if slice.kind == .partial { return "≥\(number)" }
-        return "\(number)"
+        if slice.kind == .partial { return "≥\(number)%" }
+        return "\(number)%"
+    }
+
+    private func weekNumber(pace: PaceReport?, sample: UsageSample?) -> String {
+        if let pace { return "\(Int(pace.weeklyUsedPercent.rounded()))%" }
+        if let used = sample?.usedPercent { return "\(Int(used.rounded()))%" }
+        return "—"
+    }
+
+    private func weekCaption(_ pace: PaceReport?) -> String {
+        switch pace?.weekLinearStatus {
+        case .over: return "used · ahead"
+        case .under: return "used · behind"
+        case .on: return "used · even"
+        default: return "of the allowance"
+        }
+    }
+
+    private func statusLine(_ pace: PaceReport?) -> String {
+        daySentence(pace)
     }
 
     private func heroNumber(pace: PaceReport?, sample: UsageSample?) -> String {
@@ -522,15 +583,6 @@ struct MainView: View {
             return "Today's slice is still filling in."
         default:
             return "Today's slice appears after another check in this window."
-        }
-    }
-
-    private func weekSentence(_ pace: PaceReport) -> String {
-        switch pace.weekLinearStatus {
-        case .over: return "The week is ahead of an even split."
-        case .under: return "The week is behind an even split."
-        case .on: return "The week is on an even split."
-        case .unknown: return "The week's even split is still unknown."
         }
     }
 

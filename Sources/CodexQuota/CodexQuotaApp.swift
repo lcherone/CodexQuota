@@ -89,7 +89,7 @@ final class StatusController: NSObject {
         guard let host else { return }
         host.layoutSubtreeIfNeeded()
         var size = host.fittingSize
-        size.width = 328
+        size.width = 360
         let screen = item.button?.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
         let maxHeight = max(180, (screen?.height ?? 640) - 24)
         if size.height < 80 || !size.height.isFinite {
@@ -181,7 +181,7 @@ final class StatusController: NSObject {
 final class QuotaPanel: NSPanel {
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 328, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 420),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false

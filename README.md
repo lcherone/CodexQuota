@@ -6,33 +6,11 @@ Sign-in opens in the browser. Tokens stay in that account's Codex home. The libr
 
 ## Panel
 
-Light and dark are the same layout. The status item stays in the menu bar. Click it to show or hide this panel.
+Today and the week sit side by side. The outlined slice is the one in progress, and the numbers under the days are percent of the week. Theme and Quit stay on the footer.
 
 ![Codex Quota in light](docs/images/panel-light.png)
 
 ![Codex Quota in dark](docs/images/panel-dark.png)
-
-The lower part of a full reading, including week stats and the theme control:
-
-![Week stats and theme control](docs/images/weeks-dark.png)
-
-Empty, before an account is added:
-
-![Empty panel in light](docs/images/empty-light.png)
-
-![Empty panel in dark](docs/images/empty-dark.png)
-
-Week history, following the system appearance:
-
-![Week history](docs/images/history-system.png)
-
-Signed out, with the last reading kept:
-
-![Signed out](docs/images/signed-out-dark.png)
-
-A stopped server, with a reading old enough to mark stale:
-
-![Stale reading and server error](docs/images/stale-error.png)
 
 ## Build
 

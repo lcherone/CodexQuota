@@ -186,16 +186,27 @@ public enum Pace {
 }
 
 public enum UsageStats {
-    public static func weeks(samples: [UsageSample], now: Date) -> [WeekStat] {
-        struct Group {
-            var resetsAt: Date
-            var samples: [UsageSample]
+    private struct Group {
+        var resetsAt: Date
+        var samples: [UsageSample]
+    }
+
+    /// Readings whose reset times land within half an hour are one week.
+    private static func weekKey(_ resetsAt: Date, existing: [Int: Group]) -> Int {
+        let stamp = resetsAt.timeIntervalSince1970
+        if let match = existing.first(where: { abs(Double($0.key) - stamp) < 1_800 }) {
+            return match.key
         }
+        return Int(stamp.rounded())
+    }
+
+    public static func weeks(samples: [UsageSample], now: Date) -> [WeekStat] {
         var groups: [Int: Group] = [:]
         for sample in samples {
             guard let resetsAt = sample.resetsAt, sample.usedPercent != nil else { continue }
-            let key = Int(resetsAt.timeIntervalSince1970.rounded())
+            let key = weekKey(resetsAt, existing: groups)
             var group = groups[key] ?? Group(resetsAt: resetsAt, samples: [])
+            if resetsAt > group.resetsAt { group.resetsAt = resetsAt }
             group.samples.append(sample)
             groups[key] = group
         }

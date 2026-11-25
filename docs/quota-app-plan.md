@@ -181,7 +181,7 @@ Dates in the file are ISO-8601. `resetsAt` on the wire is the Unix number descri
 
 History is kept for 26 weeks, capped at 4000 samples. A new sample replaces the previous one for that account when it arrives within 2 minutes and the used percent, reset, and lifetime token count are unchanged, so the checked time moves without a duplicate row.
 
-Week stats group samples by `resetsAt`. A finished week uses its highest `usedPercent`. The open week uses the latest sample. Recorded tokens keep, for each `startDate`, the count from the latest sample that mentioned it. Lifetime and peak day come from the latest sample that had them. The average week is the mean of those per-week percents.
+Week stats group samples by `resetsAt`. Reset times within half an hour count as the same week. A finished week uses its highest `usedPercent`. The open week uses the latest sample. Recorded tokens keep, for each `startDate`, the count from the latest sample that mentioned it. Lifetime and peak day come from the latest sample that had them. The average week is the mean of those per-week percents.
 
 ## UI states
 
@@ -190,10 +190,10 @@ The panel footer offers System, Light, and Dark. System follows the Mac appearan
 | State | What you see |
 | --- | --- |
 | No accounts | Empty panel. Add Personal, then Work, or any other name. |
-| Added, never read | "Sign in to read this week", plus Sign in. |
+| Added, never read | "No reading yet." Refresh reads the allowance. Sign in is there if Codex asks. |
 | Signing in | The browser is open. The panel waits up to three minutes. |
-| Signed out | Sign-in is the primary line. The last reading stays visible as a last-week line. |
-| Ready | Today's slice percent is the large figure. Copy says whether today is ahead, on, or inside the slice, and whether the week is ahead of or behind an even split. Seven day figures, reset line, room line. |
+| Signed out | The last reading stays, with its reset time. An open window is not called last week. |
+| Ready | Today and the week sit side by side. Copy says whether today is ahead, on, or inside the slice, and whether the week is ahead of or behind an even split. Seven slice figures are percent of the week, and the slice in progress is outlined. |
 | Estimated | Same layout, with "estimated from daily tokens". |
 | Partial | Hero shows a minimum (`≥14%`) and does not call the day ahead unless that minimum already is. |
 | No 7-day window | The account is signed in. The banner says the 7-day allowance was not included. Token stats can still update. |

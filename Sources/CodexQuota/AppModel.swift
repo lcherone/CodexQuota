@@ -98,6 +98,7 @@ final class AppModel {
         copy.selectedAccountId = id
         store = copy
         persist()
+        Task { await refresh(id) }
     }
 
     func removeAccount(_ id: String) {
