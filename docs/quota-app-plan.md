@@ -195,7 +195,7 @@ The panel footer offers System, Light, and Dark. System follows the Mac appearan
 | Added, never read | "No reading yet." Refresh reads the allowance. Sign in is there if Codex asks. |
 | Signing in | The browser is open. The panel waits up to three minutes. |
 | Signed out | The last reading stays, with its reset time. An open window is not called last week. |
-| Ready | Today and the week sit side by side. Copy says whether today is ahead, on, or inside the slice, and whether the week is ahead of or behind an even split. Seven slice figures are percent of the week, and the slice in progress is outlined. |
+| Ready | Today and the week sit side by side. Copy says whether today is ahead, on, or inside the slice, and whether the week is ahead of or behind an even split. Seven slice figures are percent of the week, and the slice in progress is outlined and announced as current. The selected account is exposed to assistive technology as selected. |
 | Estimated | Same layout, with "estimated from daily tokens". |
 | Partial | Hero shows a minimum (`≥14%`) and does not call the day ahead unless that minimum already is. |
 | No 7-day window | The account is signed in. The banner says the 7-day allowance was not included. Token stats can still update. |

@@ -368,7 +368,8 @@ struct MainView: View {
                     .padding(.vertical, 4)
                     .background(current ? palette.ink.opacity(0.1) : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    .accessibilityLabel("\(LondonClock.dayLabel(slice.start)) \(slice.points.map { "\(Int($0.rounded())) percent of the week" } ?? "no reading")")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(current ? "Current slice, " : "")\(LondonClock.dayLabel(slice.start)), \(slice.points.map { "\(Int($0.rounded())) percent of the week" } ?? "no reading available")")
                 }
             }
             Text("\(pace.weekHasRoom ? "Room later this week" : "Tight later this week"). \(roomSentence(pace))")
@@ -462,6 +463,9 @@ struct MainView: View {
         }
         .buttonStyle(.plain)
         .disabled(!model.libraryReady)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(account.label). \(rowSubtitle(account)). \(accountFigure(account, sample: sample))")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func historySection(_ totals: UsageTotals, weeks: [WeekStat], sample: UsageSample?) -> some View {
