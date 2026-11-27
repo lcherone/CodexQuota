@@ -75,8 +75,10 @@ public struct HistoryStore: Sendable {
     }
 
     public func removeHome(_ path: String) {
-        guard path.hasPrefix(homesURL.path) else { return }
-        try? FileManager.default.removeItem(atPath: path)
+        let home = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+        let ownedHomes = homesURL.standardizedFileURL.resolvingSymlinksInPath()
+        guard home.deletingLastPathComponent() == ownedHomes else { return }
+        try? FileManager.default.removeItem(at: home)
     }
 
     public func record(_ sample: UsageSample, into store: inout StoreFile, now: Date) {

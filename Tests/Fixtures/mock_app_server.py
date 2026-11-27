@@ -37,9 +37,9 @@ USAGE = {
     "summary": {
         "lifetimeTokens": 123456,
         "peakDailyTokens": 999,
-        "longestRunningTurnSec": None,
-        "currentStreakDays": None,
-        "longestStreakDays": None,
+        "longestRunningTurnSec": 7322,
+        "currentStreakDays": 4,
+        "longestStreakDays": 19,
     },
     "dailyUsageBuckets": [{"startDate": "2026-11-24", "tokens": 700}],
 }

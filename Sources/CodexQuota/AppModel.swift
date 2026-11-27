@@ -7,6 +7,7 @@ import Observation
 @Observable
 final class AppModel {
     static let shared = AppModel()
+    let loginItem = LoginItemController()
 
     private(set) var store: StoreFile
     private(set) var phase: [String: AccountPhase] = [:]
@@ -102,6 +103,7 @@ final class AppModel {
     }
 
     func removeAccount(_ id: String) {
+        guard !isBusy(id) else { return }
         guard let account = store.accounts.first(where: { $0.id == id }) else { return }
         history.removeHome(account.codexHome)
         var copy = store
@@ -124,6 +126,10 @@ final class AppModel {
         var number = store.accounts.count + 1
         while labels.contains("account \(number)") { number += 1 }
         return "Account \(number)"
+    }
+
+    func isBusy(_ id: String) -> Bool {
+        phase[id] == .refreshing || phase[id] == .signingIn
     }
 
     func refreshAll() async {
@@ -264,7 +270,10 @@ final class AppModel {
             peakDailyTokens: reading.peakDailyTokens,
             shortUsedPercent: reading.shortWindow?.usedPercent,
             shortDurationMins: reading.shortWindow?.windowDurationMins,
-            dailyBuckets: reading.dailyBuckets
+            dailyBuckets: reading.dailyBuckets,
+            longestRunningTurnSec: reading.longestRunningTurnSec,
+            currentStreakDays: reading.currentStreakDays,
+            longestStreakDays: reading.longestStreakDays
         )
     }
 

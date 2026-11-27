@@ -13,7 +13,10 @@ public enum UsageParsing {
             shortWindow: short,
             lifetimeTokens: summary?["lifetimeTokens"]?.int64,
             peakDailyTokens: summary?["peakDailyTokens"]?.int64,
-            dailyBuckets: buckets
+            dailyBuckets: buckets,
+            longestRunningTurnSec: summary?["longestRunningTurnSec"]?.int64,
+            currentStreakDays: summary?["currentStreakDays"]?.int64,
+            longestStreakDays: summary?["longestStreakDays"]?.int64
         )
     }
 

@@ -24,12 +24,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         NSApp.applicationIconImage = AppIcon.image()
+        installMainMenu()
         status.install(model: .shared)
         AppModel.shared.start()
+        let launchEvent = NSAppleEventManager.shared().currentAppleEvent
+        let loginLaunch = launchEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+        if !loginLaunch, !CommandLine.arguments.contains("--background") {
+            status.show()
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        status.show()
+        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    private func installMainMenu() {
+        let menu = NSMenu()
+        let application = NSMenuItem()
+        application.submenu = NSMenu(title: "Codex Quota")
+        application.submenu?.addItem(withTitle: "Quit Codex Quota", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(application)
+        let edit = NSMenuItem()
+        edit.submenu = NSMenu(title: "Edit")
+        for (title, action, key) in [
+            // Undo is supplied dynamically by the responder chain.
+            ("Undo", Selector(("undo:")), "z"),
+            ("Cut", #selector(NSText.cut(_:)), "x"),
+            ("Copy", #selector(NSText.copy(_:)), "c"),
+            ("Paste", #selector(NSText.paste(_:)), "v"),
+            ("Select All", #selector(NSText.selectAll(_:)), "a")
+        ] {
+            edit.submenu?.addItem(withTitle: title, action: action, keyEquivalent: key)
+        }
+        menu.addItem(edit)
+        NSApp.mainMenu = menu
     }
 }
 
@@ -73,9 +106,11 @@ final class StatusController: NSObject {
         }
     }
 
-    private func show() {
+    func show() {
+        model?.loginItem.refresh()
         fit()
         placeUnderStatusItem()
+        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         installMonitors()
     }
@@ -96,7 +131,9 @@ final class StatusController: NSObject {
             size.height = min(480, maxHeight)
         }
         size.height = min(size.height, maxHeight)
-        panel.setContentSize(size)
+        if panel.contentLayoutRect.size != size {
+            panel.setContentSize(size)
+        }
     }
 
     private func placeUnderStatusItem() {
@@ -168,6 +205,8 @@ final class StatusController: NSObject {
 
     private func applyTitle() {
         item.button?.title = model?.menuTitle ?? "Quota"
+        item.button?.toolTip = "Codex Quota — click to view usage"
+        item.button?.setAccessibilityLabel("Codex Quota, \(model?.menuTitle ?? "Quota"). Show usage.")
         if panel.isVisible {
             let previous = panel.frame.size
             fit()
@@ -182,7 +221,7 @@ final class QuotaPanel: NSPanel {
     init() {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 360, height: 420),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )

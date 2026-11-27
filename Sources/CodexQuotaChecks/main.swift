@@ -46,6 +46,7 @@ struct CodexQuotaChecks {
     static func main() async {
         PacingChecks.run()
         UsageChecks.run()
+        FormattingChecks.run()
         HistoryChecks.run()
         await SessionChecks.run()
         if Check.failures.isEmpty {
@@ -214,6 +215,7 @@ enum PacingChecks {
 
 enum UsageChecks {
     static func run() {
+        summaryStatsAndLegacySamples()
         weeklyWindowIgnoresTheFiveHourWindow()
         codexBucketWinsOverAnotherWeeklyWindow()
         millisecondResetAndClampedPercent()
@@ -221,6 +223,32 @@ enum UsageChecks {
         signedOutAccountAndLoginLink()
         initializeAndLoginPayloads()
         codexBinaryHonoursCODEXBIN()
+    }
+
+    static func summaryStatsAndLegacySamples() {
+        do {
+            let usage = try json(#"{"summary":{"lifetimeTokens":44194077000,"peakDailyTokens":1712023700,"longestRunningTurnSec":7322,"currentStreakDays":4,"longestStreakDays":19},"dailyUsageBuckets":[{"startDate":"2026-11-24","tokens":700},{"startDate":"2026-11-25","tokens":0}]}"#)
+            let reading = UsageParsing.reading(account: try json(account), limits: try json(limits), usage: usage)
+            Check.equal(reading.longestRunningTurnSec, Int64(7322))
+            Check.equal(reading.currentStreakDays, Int64(4))
+            Check.equal(reading.longestStreakDays, Int64(19))
+            Check.equal(reading.dailyBuckets.count, 2)
+            let missing = UsageParsing.reading(account: try json(account), limits: try json(limits), usage: .object([:]))
+            Check.isNil(missing.currentStreakDays)
+            Check.isNil(missing.longestStreakDays)
+            Check.isNil(missing.longestRunningTurnSec)
+            let oldSample = Data(#"{"accountId":"legacy","sampledAt":0,"dailyBuckets":[]}"#.utf8)
+            let decoded = try JSONDecoder().decode(UsageSample.self, from: oldSample)
+            Check.isNil(decoded.currentStreakDays)
+            var sample = decoded
+            sample.currentStreakDays = reading.currentStreakDays
+            sample.longestStreakDays = reading.longestStreakDays
+            sample.longestRunningTurnSec = reading.longestRunningTurnSec
+            let restored = try JSONDecoder().decode(UsageSample.self, from: JSONEncoder().encode(sample))
+            Check.equal(restored, sample)
+        } catch {
+            Check.fail("summary stats or legacy sample failed: \(error)")
+        }
     }
 
     static func weeklyWindowIgnoresTheFiveHourWindow() {
@@ -347,6 +375,7 @@ enum HistoryChecks {
         roundTripPermissionsAndCoalescing()
         corruptLibraryIsKeptBesideAnEmptyOne()
         oldSamplesAreDropped()
+        removingHomesStaysInsideTheOwnedDirectory()
         appearanceSurvivesAndOlderLibrariesStaySystem()
     }
 
@@ -415,6 +444,28 @@ enum HistoryChecks {
         }
     }
 
+    static func removingHomesStaysInsideTheOwnedDirectory() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let history = HistoryStore(directory: directory)
+        let sibling = directory.appendingPathComponent("homes-unrelated", isDirectory: true)
+        do {
+            let owned = try history.makeHome(id: "owned")
+            try FileManager.default.createDirectory(at: sibling, withIntermediateDirectories: true)
+            history.removeHome(sibling.path)
+            Check.ok(FileManager.default.fileExists(atPath: sibling.path))
+            history.removeHome(history.homesURL.path)
+            Check.ok(FileManager.default.fileExists(atPath: history.homesURL.path))
+            let link = history.homesURL.appendingPathComponent("linked")
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: sibling)
+            history.removeHome(link.path)
+            Check.ok(FileManager.default.fileExists(atPath: sibling.path))
+            history.removeHome(owned)
+            Check.ok(!FileManager.default.fileExists(atPath: owned))
+        } catch {
+            Check.fail("home removal boundary failed: \(error)")
+        }
+    }
+
     static func oldSamplesAreDropped() {
         let history = HistoryStore(directory: URL(fileURLWithPath: "/tmp"))
         var store = StoreFile.empty()
@@ -442,6 +493,9 @@ enum SessionChecks {
             Check.close(reading.shortWindow?.usedPercent, 25, accuracy: 0.001)
             Check.equal(reading.lifetimeTokens, Int64(123_456))
             Check.equal(reading.dailyBuckets.first?.tokens, Int64(700))
+            Check.equal(reading.currentStreakDays, Int64(4))
+            Check.equal(reading.longestStreakDays, Int64(19))
+            Check.equal(reading.longestRunningTurnSec, Int64(7322))
         } catch {
             Check.fail("refresh failed \(error)")
         }
@@ -476,4 +530,28 @@ final class URLBox: @unchecked Sendable {
     private var urls: [URL] = []
     func add(_ url: URL) { lock.lock(); urls.append(url); lock.unlock() }
     var all: [URL] { lock.lock(); defer { lock.unlock() }; return urls }
+}
+
+enum FormattingChecks {
+    static func run() {
+        Check.equal(UsageFormatting.compact(nil), "—")
+        Check.equal(UsageFormatting.compact(0), "0")
+        Check.equal(UsageFormatting.compact(999), "999")
+        Check.equal(UsageFormatting.compact(1000), "1K")
+        Check.equal(UsageFormatting.compact(1250), "1.3K")
+        Check.equal(UsageFormatting.compact(999_949), "999.9K")
+        Check.equal(UsageFormatting.compact(999_950), "1M")
+        Check.equal(UsageFormatting.compact(1_500_000), "1.5M")
+        Check.equal(UsageFormatting.compact(44_194_077_000), "44.2B")
+        Check.equal(UsageFormatting.compact(1_712_023_700), "1.7B")
+        Check.equal(UsageFormatting.compact(1_500_000_000_000), "1.5T")
+        Check.equal(UsageFormatting.compact(Int64.max), "9,223.4Q")
+        Check.equal(UsageFormatting.exact(44_194_077_000), "44,194,077,000")
+        Check.equal(UsageFormatting.duration(nil), "—")
+        Check.equal(UsageFormatting.duration(0), "0s")
+        Check.equal(UsageFormatting.duration(59), "59s")
+        Check.equal(UsageFormatting.duration(60), "1m 0s")
+        Check.equal(UsageFormatting.duration(7322), "2h 2m")
+        Check.equal(UsageFormatting.duration(90_000), "1d 1h")
+    }
 }

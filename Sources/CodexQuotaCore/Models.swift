@@ -40,6 +40,9 @@ public struct UsageSample: Codable, Equatable, Sendable {
     public var shortUsedPercent: Double?
     public var shortDurationMins: Double?
     public var dailyBuckets: [DailyBucket]
+    public var longestRunningTurnSec: Int64? = nil
+    public var currentStreakDays: Int64? = nil
+    public var longestStreakDays: Int64? = nil
 
     public init(
         accountId: String,
@@ -56,7 +59,10 @@ public struct UsageSample: Codable, Equatable, Sendable {
         peakDailyTokens: Int64?,
         shortUsedPercent: Double?,
         shortDurationMins: Double?,
-        dailyBuckets: [DailyBucket]
+        dailyBuckets: [DailyBucket],
+        longestRunningTurnSec: Int64? = nil,
+        currentStreakDays: Int64? = nil,
+        longestStreakDays: Int64? = nil
     ) {
         self.accountId = accountId
         self.sampledAt = sampledAt
@@ -73,6 +79,9 @@ public struct UsageSample: Codable, Equatable, Sendable {
         self.shortUsedPercent = shortUsedPercent
         self.shortDurationMins = shortDurationMins
         self.dailyBuckets = dailyBuckets
+        self.longestRunningTurnSec = longestRunningTurnSec
+        self.currentStreakDays = currentStreakDays
+        self.longestStreakDays = longestStreakDays
     }
 
     public static func make(
@@ -90,7 +99,10 @@ public struct UsageSample: Codable, Equatable, Sendable {
         peakDailyTokens: Int64? = nil,
         shortUsedPercent: Double? = nil,
         shortDurationMins: Double? = nil,
-        dailyBuckets: [DailyBucket] = []
+        dailyBuckets: [DailyBucket] = [],
+        longestRunningTurnSec: Int64? = nil,
+        currentStreakDays: Int64? = nil,
+        longestStreakDays: Int64? = nil
     ) -> UsageSample {
         UsageSample(
             accountId: accountId,
@@ -107,7 +119,10 @@ public struct UsageSample: Codable, Equatable, Sendable {
             peakDailyTokens: peakDailyTokens,
             shortUsedPercent: shortUsedPercent,
             shortDurationMins: shortDurationMins,
-            dailyBuckets: dailyBuckets
+            dailyBuckets: dailyBuckets,
+            longestRunningTurnSec: longestRunningTurnSec,
+            currentStreakDays: currentStreakDays,
+            longestStreakDays: longestStreakDays
         )
     }
 }
@@ -203,6 +218,9 @@ public struct UsageReading: Equatable, Sendable {
     public var lifetimeTokens: Int64?
     public var peakDailyTokens: Int64?
     public var dailyBuckets: [DailyBucket]
+    public var longestRunningTurnSec: Int64? = nil
+    public var currentStreakDays: Int64? = nil
+    public var longestStreakDays: Int64? = nil
 }
 
 public struct WeekStat: Equatable, Identifiable, Sendable {

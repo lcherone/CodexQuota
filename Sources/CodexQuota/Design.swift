@@ -26,11 +26,6 @@ struct Palette {
     }
 }
 
-func tokenText(_ value: Int64?) -> String {
-    guard let value else { return "—" }
-    return value.formatted(.number.grouping(.automatic).locale(Locale(identifier: "en_GB")))
-}
-
 func planLabel(_ value: String?) -> String {
     guard let value, !value.isEmpty else { return "Codex" }
     return value.split(separator: "_").map { word in

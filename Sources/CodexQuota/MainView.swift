@@ -8,6 +8,8 @@ struct MainView: View {
     @State private var adding = false
     @State private var draft = ""
     @State private var confirmingRemoval = false
+    @State private var dailyExpanded = false
+    @FocusState private var nameFocused: Bool
 
     private var palette: Palette { Palette.current(resolvedScheme) }
 
@@ -44,6 +46,8 @@ struct MainView: View {
                 }
                 .frame(maxHeight: 520)
                 hairline
+                startupSection
+                hairline
                 footer
             }
             .frame(width: 360)
@@ -55,6 +59,13 @@ struct MainView: View {
         .onChange(of: model.selectedAccount?.id) {
             confirmingRemoval = false
             adding = false
+            dailyExpanded = false
+        }
+        .onChange(of: adding) {
+            if !adding { nameFocused = false }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.loginItem.refresh()
         }
     }
 
@@ -77,6 +88,37 @@ struct MainView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(palette.ink)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var startupSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Launch at login", isOn: Binding(
+                get: { model.loginItem.isEnabled },
+                set: { model.loginItem.setEnabled($0) }
+            ))
+            .toggleStyle(.checkbox)
+            .disabled(!model.loginItem.canConfigure)
+            if !model.loginItem.canConfigure {
+                Text("Install in Applications to enable startup.")
+                    .foregroundStyle(palette.secondary)
+            }
+            if model.loginItem.needsApproval {
+                Text("Allow Codex Quota in Login Items to finish setup.")
+                    .foregroundStyle(palette.secondary)
+                plainButton("Open Login Items") { model.loginItem.openSettings() }
+            }
+            if let error = model.loginItem.error {
+                Text(error)
+                    .foregroundStyle(palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                plainButton("Open Login Items") { model.loginItem.openSettings() }
+            }
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
@@ -149,12 +191,12 @@ struct MainView: View {
             hairline
             accountsSection
             hairline
-            historySection(totals, weeks: weeks)
+            historySection(totals, weeks: weeks, sample: sample)
         }
     }
 
     private func header(_ account: AccountRecord, sample: UsageSample?) -> some View {
-        let busy = model.phase[account.id] == .refreshing || model.phase[account.id] == .signingIn
+        let busy = model.isBusy(account.id)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(account.label)
@@ -291,6 +333,8 @@ struct MainView: View {
                 .lineLimit(2)
                 .frame(width: 148, alignment: .leading)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(access ?? "\(title) \(value). \(caption)")
     }
 
     private func paceSection(_ pace: PaceReport) -> some View {
@@ -339,8 +383,8 @@ struct MainView: View {
                         adding = true
                         confirmingRemoval = false
                     }
-                    if model.selectedAccount != nil {
-                        plainButton("Remove") { confirmingRemoval = true }
+                    if let account = model.selectedAccount {
+                        plainButton("Remove", disabled: model.isBusy(account.id)) { confirmingRemoval = true }
                     }
                 }
             }
@@ -350,7 +394,7 @@ struct MainView: View {
                     .foregroundStyle(palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 12) {
-                    plainButton("Remove from this Mac") {
+                    plainButton("Remove from this Mac", disabled: model.isBusy(account.id)) {
                         model.removeAccount(account.id)
                         confirmingRemoval = false
                     }
@@ -389,7 +433,7 @@ struct MainView: View {
         .buttonStyle(.plain)
     }
 
-    private func historySection(_ totals: UsageTotals, weeks: [WeekStat]) -> some View {
+    private func historySection(_ totals: UsageTotals, weeks: [WeekStat], sample: UsageSample?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 sectionTitle("Weeks")
@@ -417,19 +461,67 @@ struct MainView: View {
                     .font(.system(size: 12))
                 }
             }
-            HStack(alignment: .top, spacing: 0) {
-                summaryCell("Lifetime", tokenText(totals.lifetimeTokens))
-                summaryCell("Peak day", tokenText(totals.peakDailyTokens))
-                summaryCell("Recorded", tokenText(totals.recordedTokens))
-                summaryCell("Average", totals.averageWeeklyPercent.map { "\(Int($0.rounded()))%" } ?? "—")
+            sectionTitle("Usage stats")
+                .padding(.top, 8)
+            LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 10) {
+                tokenCell("Lifetime tokens", totals.lifetimeTokens)
+                tokenCell("Peak day tokens", totals.peakDailyTokens)
+                tokenCell("Recorded tokens", totals.recordedTokens,
+                          context: "Sum of daily token totals retained in this Mac's library.")
+                summaryCell("Average week", totals.averageWeeklyPercent.map { "\(Int($0.rounded()))%" } ?? "—",
+                            detail: "Average allowance used across the weeks in the library, including the current week.")
+                summaryCell("Current streak", dayCount(sample?.currentStreakDays),
+                            detail: dayCount(sample?.currentStreakDays, exact: true))
+                summaryCell("Longest streak", dayCount(sample?.longestStreakDays),
+                            detail: dayCount(sample?.longestStreakDays, exact: true))
+                summaryCell("Longest turn", UsageFormatting.duration(sample?.longestRunningTurnSec),
+                            detail: "\(UsageFormatting.exact(sample?.longestRunningTurnSec)) seconds")
             }
             .padding(.top, 4)
+            Text("— means the stat wasn't supplied. Hover for exact values.")
+                .font(.system(size: 10))
+                .foregroundStyle(palette.secondary)
+                .padding(.top, 4)
+            DisclosureGroup("Daily tokens · \(dayCount(Int64(sample?.dailyBuckets.count ?? 0)))", isExpanded: $dailyExpanded) {
+                if let buckets = sample?.dailyBuckets, !buckets.isEmpty {
+                    ForEach(Array(buckets.sorted { $0.startDate > $1.startDate }.enumerated()), id: \.offset) { _, bucket in
+                        HStack {
+                            Text(bucket.startDate)
+                            Spacer(minLength: 8)
+                            Text(UsageFormatting.compact(bucket.tokens))
+                                .monospacedDigit()
+                        }
+                        .help("\(bucket.startDate): \(UsageFormatting.exact(bucket.tokens)) tokens")
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(bucket.startDate): \(UsageFormatting.exact(bucket.tokens)) tokens")
+                        .padding(.vertical, 2)
+                    }
+                } else {
+                    Text("No daily token totals supplied.")
+                        .foregroundStyle(palette.secondary)
+                }
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(palette.ink)
+            .tint(palette.secondary)
+            .padding(.top, 6)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
-    private func summaryCell(_ title: String, _ value: String) -> some View {
+    private func tokenCell(_ title: String, _ value: Int64?, context: String = "") -> some View {
+        summaryCell(title, UsageFormatting.compact(value),
+                    detail: "\(UsageFormatting.exact(value)) tokens. \(context)")
+    }
+
+    private func dayCount(_ value: Int64?, exact: Bool = false) -> String {
+        guard let value else { return "—" }
+        let number = exact ? UsageFormatting.exact(value) : UsageFormatting.compact(value)
+        return "\(number) \(value == 1 ? "day" : "days")"
+    }
+
+    private func summaryCell(_ title: String, _ value: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
                 .font(.system(size: 10))
@@ -442,11 +534,23 @@ struct MainView: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .help("\(title): \(value == "—" ? "Not available" : detail)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summaryDescription(title, value: value, detail: detail))
+    }
+
+    private func summaryDescription(_ title: String, value: String, detail: String) -> String {
+        if value == "—" { return "\(title): Not available" }
+        if value == detail { return "\(title): \(value)" }
+        return "\(title): \(value). \(detail)"
     }
 
     private var addForm: some View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("Name", text: $draft)
+                .focused($nameFocused)
+                .task { nameFocused = true }
+                .onSubmit { addDraftAccount() }
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
                 .foregroundStyle(palette.ink)
@@ -456,12 +560,18 @@ struct MainView: View {
                 .overlay(Rectangle().stroke(palette.hairline, lineWidth: 1))
             HStack(spacing: 12) {
                 plainButton("Add") {
-                    model.addAccount(label: draft)
-                    adding = false
+                    addDraftAccount()
                 }
+                .keyboardShortcut(.defaultAction)
                 plainButton("Cancel") { adding = false }
             }
         }
+    }
+
+    private func addDraftAccount() {
+        model.addAccount(label: draft)
+        adding = false
+        draft = ""
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -547,9 +657,6 @@ struct MainView: View {
         if let pace, let today = pace.todaySlicePercent, pace.todayKind == .partial {
             return "≥\(Int(today.rounded()))%"
         }
-        if let used = sample?.usedPercent {
-            return "\(Int(used.rounded()))%"
-        }
         return "—"
     }
 
@@ -560,12 +667,12 @@ struct MainView: View {
         case .partial:
             return "of today's slice, at least"
         default:
-            return pace == nil ? "of the weekly allowance" : "of today's slice"
+            return "of today's slice"
         }
     }
 
     private func heroAccess(pace: PaceReport?, sample: UsageSample?) -> String {
-        "\(heroNumber(pace: pace, sample: sample)). \(daySentence(pace))"
+        "Today \(heroNumber(pace: pace, sample: sample)). \(daySentence(pace))"
     }
 
     private func daySentence(_ pace: PaceReport?) -> String {

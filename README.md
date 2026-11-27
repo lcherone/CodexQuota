@@ -27,14 +27,14 @@ A weekly allowance is one number. The day you are in is another. You can be comf
 
 ## The panel
 
-Click the figure in the menu bar. The panel drops down under it. There is no desktop window and no Dock icon while the app is running.
+Open the app to show the panel, or click its figure in the menu bar. Opening the app again brings the panel back. There is no desktop window and no Dock icon while the app is running.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/panel-dark.png">
-  <img src="docs/assets/screenshots/panel-light.png" alt="Light panel. Today is 135 percent of its slice. The week is 62 percent used and ahead of an even split. Tuesday's slice is outlined at 19 percent of the week." width="420">
+  <img src="docs/assets/screenshots/panel-light.png" alt="Light panel. Today is still unknown, the week is 10 percent used, and Friday is outlined. Launch at login is enabled." width="420">
 </picture>
 
-The large pair is the point. **Today** is this slice, as a percent of a fair share of the week. **Week** is how much of the allowance is already used. The row underneath is each slice as a percent of the week, and the box is the slice you are in now.
+The large pair is the point. **Today** is this slice, as a percent of a fair share of the week; a dash means it cannot be measured yet. **Week** is how much of the allowance is already used. The row underneath is each slice as a percent of the week, and the box is the slice you are in now.
 
 The panels on this page were captured from the real app against a local stand-in. The address `person@example.com` and the figures are sample readings, not a live Codex account.
 
@@ -47,7 +47,12 @@ The menu-bar title is the glance: `49%`, `154% over`, or `62% wk` when today is 
 Personal and work each get a Codex home on this Mac. The list shows the week percent. Add one, and the panel reads it. Sign-in opens in the browser. The library stores readings, not tokens.
 
 **Look back without losing the plot.**
-Finished weeks stay in the list. Lifetime tokens, peak day, recorded tokens, and the average sit on one row.
+Finished weeks stay in the list. Usage stats use compact K/M/B/T figures, with exact counts on hover. Lifetime tokens, peak day, longest turn, and current and longest streaks come from Codex. Recorded tokens and the average week come from this Mac's library. Expand Daily tokens to see every day returned in the latest reading; unavailable stats show a dash.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/stats-dark.png">
+  <img src="docs/assets/screenshots/stats-light.png" alt="Expanded usage stats with compact token totals, streaks, longest turn, and a daily token count." width="420">
+</picture>
 
 **Leave a reading behind when you sign out.**
 The last percent and its reset stay on the machine. The open week is not called "last week."
@@ -59,10 +64,13 @@ The last percent and its reset stay on the machine. The open week is not called 
 **Match the desk.**
 System, Light, and Dark live on the footer, next to Quit, and the choice is kept. Light is white with black text. Dark is black with white text. Hairline rules, no coloured cards.
 
-Before any account exists, the panel is only the invitation to add one.
+**Start with your Mac.**
+Install the app in Applications, then enable **Launch at login** in the panel. It starts quietly in the menu bar after you sign in to macOS. The checkbox reflects the system setting, and the panel links to Login Items if approval is needed.
+
+Before any account exists, the panel invites you to add one. Enter a name and press Return, then sign in with ChatGPT.
 
 <p align="center">
-  <img src="docs/assets/screenshots/empty-light.png" alt="Empty light panel. No accounts yet. Add account, with System, Light, Dark, and Quit on the footer." width="420">
+  <img src="docs/assets/screenshots/empty-light.png" alt="Empty light panel. Add account starts setup. Launch at login is enabled, with System, Light, Dark, and Quit below." width="420">
 </p>
 
 ## A week, in plain language
@@ -82,22 +90,32 @@ Days are equal slices of the weekly window, named in Europe/London. The full rul
 
 ## Get started
 
-You build it on the Mac. There is no packaged download yet.
+Build and install from source on a Mac with **macOS 14+**, **Swift 6**, and the **Codex CLI** already installed:
 
 ```sh
 git clone https://github.com/lcherone/CodexQuota.git
 cd CodexQuota
-swift build --product CodexQuota
-swift run CodexQuota
+./scripts/install-app.sh
+open "$HOME/Applications/CodexQuota.app"
 ```
 
-The figure appears in the menu bar. Click it. Quit is at the bottom of the panel.
+The installer uses `~/Applications`, needs no administrator access, and keeps account data when updating. Quit the app before running it again. Enable **Launch at login** in the installed app to start automatically. Opening it normally shows the panel; Escape or clicking elsewhere dismisses it, and Quit is on the footer.
 
-A double-clickable app, with the Dock icon hidden by `LSUIElement` as well:
+To make the bundle and ZIP without installing:
 
 ```sh
 ./scripts/build-app.sh
 open build/CodexQuota.app
+```
+
+This creates `build/CodexQuota.app` and `build/CodexQuota.zip` for the Mac architecture you build on. You can also move the app into `/Applications` or `~/Applications` in Finder. The bundle includes the utility, icon, and metadata; the Codex CLI remains a separate prerequisite.
+
+The bundle is signed ad hoc for local use, not Developer ID signed or notarized. There is no published binary release yet. More install, update, startup, and removal details are in [Build and run](docs/GETTING-STARTED.md).
+
+For development without a bundle:
+
+```sh
+swift run CodexQuota
 ```
 
 Checks run against a local mock. They do not call OpenAI and they do not read a Codex home that already has a login.
