@@ -1,6 +1,8 @@
 import Foundation
 
 public struct AccountRecord: Codable, Equatable, Identifiable, Sendable {
+    public static let maximumLabelLength = 40
+
     public var id: String
     public var label: String
     public var codexHome: String
@@ -11,6 +13,12 @@ public struct AccountRecord: Codable, Equatable, Identifiable, Sendable {
         self.label = label
         self.codexHome = codexHome
         self.createdAt = createdAt
+    }
+
+    public static func normalizedLabel(_ input: String, retaining fallback: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return fallback }
+        return String(trimmed.prefix(maximumLabelLength))
     }
 }
 

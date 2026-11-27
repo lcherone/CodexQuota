@@ -158,8 +158,7 @@ final class AppModel {
 
     func addAccount(label: String) {
         guard libraryReady else { return }
-        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = String((trimmed.isEmpty ? suggestedLabel() : trimmed).prefix(40))
+        let name = AccountRecord.normalizedLabel(label, retaining: suggestedLabel())
         let id = UUID().uuidString.lowercased()
         let home: String
         do {
@@ -174,6 +173,17 @@ final class AppModel {
         store = copy
         persist()
         Task { await refresh(id) }
+    }
+
+    func renameAccount(_ id: String, label: String) {
+        guard libraryReady else { return }
+        guard let index = store.accounts.firstIndex(where: { $0.id == id }) else { return }
+        let name = AccountRecord.normalizedLabel(label, retaining: store.accounts[index].label)
+        guard name != store.accounts[index].label else { return }
+        var copy = store
+        copy.accounts[index].label = name
+        store = copy
+        persist()
     }
 
     func removeAccount(_ id: String) {

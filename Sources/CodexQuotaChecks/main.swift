@@ -791,6 +791,7 @@ enum UsageChecks {
 
 enum HistoryChecks {
     static func run() {
+        accountLabelsNormalizeAndRenameRoundTrips()
         roundTripPermissionsAndCoalescing()
         corruptLibraryIsKeptBesideAnEmptyOne()
         unsupportedLibraryIsBlockedAndUnchanged()
@@ -799,6 +800,36 @@ enum HistoryChecks {
         failedHomeRemovalPreservesAccountStateForRetry()
         removingHomesStaysInsideTheOwnedDirectory()
         appearanceSurvivesAndOlderLibrariesStaySystem()
+    }
+
+    static func accountLabelsNormalizeAndRenameRoundTrips() {
+        Check.equal(AccountRecord.normalizedLabel("  Work  ", retaining: "Personal"), "Work")
+        Check.equal(AccountRecord.normalizedLabel(String(repeating: "a", count: 41), retaining: "Personal"), String(repeating: "a", count: 40))
+        Check.equal(AccountRecord.normalizedLabel(" \n\t ", retaining: "Personal"), "Personal")
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let history = HistoryStore(directory: directory)
+        do {
+            let createdAt = Date(timeIntervalSince1970: 1_800_000_000)
+            let account = AccountRecord(id: "selected", label: "Personal", codexHome: try history.makeHome(id: "selected"), createdAt: createdAt)
+            let sample = UsageSample.make(accountId: account.id, sampledAt: createdAt.addingTimeInterval(60), usedPercent: 25)
+            var store = StoreFile.empty()
+            store.accounts = [account]
+            store.samples = [sample]
+            store.selectedAccountId = account.id
+            store.accounts[0].label = AccountRecord.normalizedLabel("  Work account  ", retaining: account.label)
+
+            try history.save(store)
+            let loaded = try history.load(now: sample.sampledAt).store
+            Check.equal(loaded.accounts[0].label, "Work account")
+            Check.equal(loaded.accounts[0].id, account.id)
+            Check.equal(loaded.accounts[0].codexHome, account.codexHome)
+            Check.equal(loaded.accounts[0].createdAt, account.createdAt)
+            Check.equal(loaded.selectedAccountId, account.id)
+            Check.equal(loaded.samples, [sample])
+        } catch {
+            Check.fail("account rename round trip failed \(error)")
+        }
     }
 
     static func roundTripPermissionsAndCoalescing() {

@@ -7,6 +7,7 @@ struct MainView: View {
     var availableHeight: CGFloat = 640
     @Environment(\.colorScheme) private var scheme
     @State private var adding = false
+    @State private var renaming = false
     @State private var draft = ""
     @State private var confirmingRemoval = false
     @State private var dailyExpanded = false
@@ -59,11 +60,15 @@ struct MainView: View {
         .onChange(of: model.selectedAccount?.id) {
             confirmingRemoval = false
             adding = false
+            renaming = false
             dailyExpanded = false
             weeklyHistoryExpanded = false
         }
         .onChange(of: adding) {
             if !adding { nameFocused = false }
+        }
+        .onChange(of: renaming) {
+            if !renaming { nameFocused = false }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.loginItem.refresh()
@@ -434,15 +439,27 @@ struct MainView: View {
             }
             if adding {
                 addForm
+            } else if renaming {
+                renameForm
             } else {
                 HStack(spacing: 12) {
                     actionButton("Add account", icon: "plus", disabled: !model.libraryReady) {
                         draft = model.suggestedLabel()
                         adding = true
+                        renaming = false
                         confirmingRemoval = false
                     }
                     if let account = model.selectedAccount {
-                        actionButton("Remove", icon: "trash", destructive: true, disabled: model.isBusy(account.id) || !model.libraryReady) { confirmingRemoval = true }
+                        actionButton("Rename", icon: "pencil", disabled: !model.libraryReady) {
+                            draft = account.label
+                            renaming = true
+                            adding = false
+                            confirmingRemoval = false
+                        }
+                        actionButton("Remove", icon: "trash", destructive: true, disabled: model.isBusy(account.id) || !model.libraryReady) {
+                            confirmingRemoval = true
+                            renaming = false
+                        }
                     }
                 }
             }
@@ -692,9 +709,49 @@ struct MainView: View {
         }
     }
 
+    private var renameForm: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("Name", text: $draft)
+                .focused($nameFocused)
+                .task { nameFocused = true }
+                .onSubmit { renameSelectedAccount() }
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(palette.ink)
+                .tint(palette.ink)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .overlay(Rectangle().stroke(palette.hairline, lineWidth: 1))
+                .disabled(!model.libraryReady)
+            HStack(spacing: 12) {
+                Button("Save") { renameSelectedAccount() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .tint(palette.ink)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.libraryReady)
+                Button("Cancel") {
+                    renaming = false
+                    draft = ""
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .keyboardShortcut(.cancelAction)
+            }
+        }
+    }
+
     private func addDraftAccount() {
         model.addAccount(label: draft)
         adding = false
+        draft = ""
+    }
+
+    private func renameSelectedAccount() {
+        if let account = model.selectedAccount {
+            model.renameAccount(account.id, label: draft)
+        }
+        renaming = false
         draft = ""
     }
 
