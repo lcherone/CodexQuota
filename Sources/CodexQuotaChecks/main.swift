@@ -39,6 +39,13 @@ enum Check {
     static func notNil<T>(_ value: T?, file: StaticString = #fileID, line: UInt = #line) {
         if value == nil { fail("expected a value", file: file, line: line) }
     }
+
+    static func `throws`(_ operation: () throws -> Void, file: StaticString = #fileID, line: UInt = #line) {
+        do {
+            try operation()
+            fail("expected an error", file: file, line: line)
+        } catch {}
+    }
 }
 
 @main
@@ -375,6 +382,7 @@ enum HistoryChecks {
         roundTripPermissionsAndCoalescing()
         corruptLibraryIsKeptBesideAnEmptyOne()
         oldSamplesAreDropped()
+        failedHomeRemovalPreservesAccountStateForRetry()
         removingHomesStaysInsideTheOwnedDirectory()
         appearanceSurvivesAndOlderLibrariesStaySystem()
     }
@@ -451,18 +459,58 @@ enum HistoryChecks {
         do {
             let owned = try history.makeHome(id: "owned")
             try FileManager.default.createDirectory(at: sibling, withIntermediateDirectories: true)
-            history.removeHome(sibling.path)
+            Check.throws { try history.removeHome(sibling.path) }
             Check.ok(FileManager.default.fileExists(atPath: sibling.path))
-            history.removeHome(history.homesURL.path)
+            Check.throws { try history.removeHome(history.homesURL.path) }
             Check.ok(FileManager.default.fileExists(atPath: history.homesURL.path))
             let link = history.homesURL.appendingPathComponent("linked")
             try FileManager.default.createSymbolicLink(at: link, withDestinationURL: sibling)
-            history.removeHome(link.path)
+            Check.throws { try history.removeHome(link.path) }
+            Check.ok(FileManager.default.fileExists(atPath: link.path))
             Check.ok(FileManager.default.fileExists(atPath: sibling.path))
-            history.removeHome(owned)
+            try history.removeHome(owned)
             Check.ok(!FileManager.default.fileExists(atPath: owned))
         } catch {
             Check.fail("home removal boundary failed: \(error)")
+        }
+    }
+
+    static func failedHomeRemovalPreservesAccountStateForRetry() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        final class RemovalControl: @unchecked Sendable {
+            var failure: Error? = CocoaError(.fileWriteNoPermission)
+        }
+        let control = RemovalControl()
+        let history = HistoryStore(directory: directory) { url in
+            if let failure = control.failure { throw failure }
+            try FileManager.default.removeItem(at: url)
+        }
+        do {
+            let accountID = "selected"
+            let home = try history.makeHome(id: accountID)
+            let account = AccountRecord(id: accountID, label: "Work", codexHome: home, createdAt: Date())
+            let remainingAccount = AccountRecord(id: "personal", label: "Personal", codexHome: try history.makeHome(id: "personal"), createdAt: Date())
+            let sample = UsageSample.make(accountId: accountID, sampledAt: Date(), usedPercent: 25, resetsAt: Date().addingTimeInterval(86_400))
+            let remainingSample = UsageSample.make(accountId: remainingAccount.id, sampledAt: Date(), usedPercent: 10, resetsAt: Date().addingTimeInterval(86_400))
+            var store = StoreFile.empty()
+            store.accounts = [remainingAccount, account]
+            store.samples = [remainingSample, sample]
+            store.selectedAccountId = accountID
+
+            Check.throws { _ = try history.removingAccount(accountID, from: store) }
+            Check.equal(store.accounts, [remainingAccount, account])
+            Check.equal(store.samples, [remainingSample, sample])
+            Check.equal(store.selectedAccountId, accountID)
+            Check.ok(FileManager.default.fileExists(atPath: home))
+
+            control.failure = nil
+            store = try history.removingAccount(accountID, from: store)
+            Check.ok(!FileManager.default.fileExists(atPath: home))
+            Check.equal(store.accounts, [remainingAccount])
+            Check.equal(store.samples, [remainingSample])
+            Check.equal(store.selectedAccountId, remainingAccount.id)
+        } catch {
+            Check.fail("failed home removal retry failed: \(error)")
         }
     }
 

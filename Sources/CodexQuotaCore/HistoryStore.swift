@@ -7,9 +7,14 @@ public struct LibraryLoad: Equatable, Sendable {
 
 public struct HistoryStore: Sendable {
     public var directory: URL
+    private let removeItem: @Sendable (URL) throws -> Void
 
-    public init(directory: URL) {
+    public init(
+        directory: URL,
+        removeItem: @escaping @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
+    ) {
         self.directory = directory
+        self.removeItem = removeItem
     }
 
     public var fileURL: URL { directory.appendingPathComponent("store.json") }
@@ -74,11 +79,25 @@ public struct HistoryStore: Sendable {
         return url.path
     }
 
-    public func removeHome(_ path: String) {
+    public func removeHome(_ path: String) throws {
         let home = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
         let ownedHomes = homesURL.standardizedFileURL.resolvingSymlinksInPath()
-        guard home.deletingLastPathComponent() == ownedHomes else { return }
-        try? FileManager.default.removeItem(at: home)
+        guard home.deletingLastPathComponent() == ownedHomes else {
+            throw QuotaFailure.library("Codex Quota refused to remove a home outside its managed homes directory.")
+        }
+        try removeItem(home)
+    }
+
+    public func removingAccount(_ id: String, from store: StoreFile) throws -> StoreFile {
+        guard let account = store.accounts.first(where: { $0.id == id }) else { return store }
+        try removeHome(account.codexHome)
+        var copy = store
+        copy.accounts.removeAll { $0.id == id }
+        copy.samples.removeAll { $0.accountId == id }
+        if copy.selectedAccountId == id {
+            copy.selectedAccountId = copy.accounts.first?.id
+        }
+        return copy
     }
 
     public func record(_ sample: UsageSample, into store: inout StoreFile, now: Date) {

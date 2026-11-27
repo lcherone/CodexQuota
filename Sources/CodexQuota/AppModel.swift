@@ -105,14 +105,12 @@ final class AppModel {
     func removeAccount(_ id: String) {
         guard !isBusy(id) else { return }
         guard let account = store.accounts.first(where: { $0.id == id }) else { return }
-        history.removeHome(account.codexHome)
-        var copy = store
-        copy.accounts.removeAll { $0.id == id }
-        copy.samples.removeAll { $0.accountId == id }
-        if copy.selectedAccountId == id {
-            copy.selectedAccountId = copy.accounts.first?.id
+        do {
+            store = try history.removingAccount(id, from: store)
+        } catch {
+            phase[id] = .failed("Couldn't remove \(account.label) because its Codex home couldn't be deleted. Check that the home is accessible, then try Remove again.")
+            return
         }
-        store = copy
         phase[id] = nil
         banners[id] = nil
         authRequired.remove(id)
