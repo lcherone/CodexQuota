@@ -188,12 +188,58 @@ public enum PanelAppearance: String, Codable, Equatable, Sendable, CaseIterable,
     public var id: String { rawValue }
 }
 
+public struct QuotaAlertPreferences: Codable, Equatable, Sendable {
+    public static let defaultThreshold = 80
+    public static let supportedThresholds = 1...100
+
+    public var enabled: Bool
+    public var weeklyThreshold: Int
+
+    public init(enabled: Bool = false, weeklyThreshold: Int = defaultThreshold) {
+        self.enabled = enabled
+        self.weeklyThreshold = Self.normalizedThreshold(weeklyThreshold)
+    }
+
+    public static func normalizedThreshold(_ threshold: Int) -> Int {
+        min(supportedThresholds.upperBound, max(supportedThresholds.lowerBound, threshold))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled
+        case weeklyThreshold
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        weeklyThreshold = Self.normalizedThreshold(
+            try container.decodeIfPresent(Int.self, forKey: .weeklyThreshold) ?? Self.defaultThreshold
+        )
+    }
+}
+
+public struct QuotaAlertReceipt: Codable, Equatable, Sendable {
+    public var accountId: String
+    public var resetAt: Date
+    public var eventId: String
+    public var deliveredAt: Date
+
+    public init(accountId: String, resetAt: Date, eventId: String, deliveredAt: Date) {
+        self.accountId = accountId
+        self.resetAt = resetAt
+        self.eventId = eventId
+        self.deliveredAt = deliveredAt
+    }
+}
+
 public struct StoreFile: Codable, Equatable, Sendable {
     public var version: Int
     public var selectedAccountId: String?
     public var accounts: [AccountRecord]
     public var samples: [UsageSample]
     public var appearance: PanelAppearance
+    public var alertPreferences: QuotaAlertPreferences
+    public var alertReceipts: [QuotaAlertReceipt]
 
     public static let currentVersion = 1
 
@@ -202,13 +248,17 @@ public struct StoreFile: Codable, Equatable, Sendable {
         selectedAccountId: String?,
         accounts: [AccountRecord],
         samples: [UsageSample],
-        appearance: PanelAppearance = .system
+        appearance: PanelAppearance = .system,
+        alertPreferences: QuotaAlertPreferences = QuotaAlertPreferences(),
+        alertReceipts: [QuotaAlertReceipt] = []
     ) {
         self.version = version
         self.selectedAccountId = selectedAccountId
         self.accounts = accounts
         self.samples = samples
         self.appearance = appearance
+        self.alertPreferences = alertPreferences
+        self.alertReceipts = alertReceipts
     }
 
     public static func empty() -> StoreFile {
@@ -221,6 +271,8 @@ public struct StoreFile: Codable, Equatable, Sendable {
         case accounts
         case samples
         case appearance
+        case alertPreferences
+        case alertReceipts
     }
 
     public init(from decoder: Decoder) throws {
@@ -230,6 +282,8 @@ public struct StoreFile: Codable, Equatable, Sendable {
         accounts = try container.decode([AccountRecord].self, forKey: .accounts)
         samples = try container.decode([UsageSample].self, forKey: .samples)
         appearance = try container.decodeIfPresent(PanelAppearance.self, forKey: .appearance) ?? .system
+        alertPreferences = try container.decodeIfPresent(QuotaAlertPreferences.self, forKey: .alertPreferences) ?? QuotaAlertPreferences()
+        alertReceipts = try container.decodeIfPresent([QuotaAlertReceipt].self, forKey: .alertReceipts) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -239,6 +293,8 @@ public struct StoreFile: Codable, Equatable, Sendable {
         try container.encode(accounts, forKey: .accounts)
         try container.encode(samples, forKey: .samples)
         try container.encode(appearance, forKey: .appearance)
+        try container.encode(alertPreferences, forKey: .alertPreferences)
+        try container.encode(alertReceipts, forKey: .alertReceipts)
     }
 }
 

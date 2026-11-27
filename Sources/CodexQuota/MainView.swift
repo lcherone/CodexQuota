@@ -65,6 +65,7 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.loginItem.refresh()
+            Task { await model.refreshAlertPermission() }
         }
     }
 
@@ -77,6 +78,7 @@ struct MainView: View {
     private var footer: some View {
         VStack(spacing: 8) {
             startupSection
+            alertsSection
             HStack(spacing: 8) {
                 Picker("Appearance", selection: Binding(
                     get: { model.store.appearance },
@@ -131,6 +133,39 @@ struct MainView: View {
         }
         .font(.system(size: 11))
         .foregroundStyle(palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var alertsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Quota alerts", isOn: Binding(
+                get: { model.alertsEnabled },
+                set: { enabled in Task { await model.setAlertsEnabled(enabled) } }
+            ))
+            .toggleStyle(.checkbox)
+            .tint(palette.ink)
+            .disabled(!model.libraryReady || model.alertPermission == .unavailable)
+            if model.alertsEnabled {
+                Stepper(
+                    "Weekly threshold: \(model.store.alertPreferences.weeklyThreshold)%",
+                    value: Binding(
+                        get: { model.store.alertPreferences.weeklyThreshold },
+                        set: { model.setAlertThreshold($0) }
+                    ),
+                    in: QuotaAlertPreferences.supportedThresholds,
+                    step: 5
+                )
+                .accessibilityLabel("Weekly quota alert threshold")
+                .accessibilityValue("\(model.store.alertPreferences.weeklyThreshold) percent")
+            }
+            if model.alertPermission == .denied {
+                Text("Alerts are off. Allow Codex Quota notifications in System Settings.")
+                    .foregroundStyle(palette.secondary)
+            } else if model.alertPermission == .unavailable {
+                Text("Notifications are unavailable on this Mac.")
+                    .foregroundStyle(palette.secondary)
+            }
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

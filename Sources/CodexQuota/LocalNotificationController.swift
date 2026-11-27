@@ -1,0 +1,91 @@
+import CodexQuotaCore
+import Foundation
+import UserNotifications
+
+enum LocalNotificationPermission: Equatable {
+    case unknown
+    case notDetermined
+    case authorized
+    case denied
+    case unavailable
+}
+
+@MainActor
+protocol LocalNotificationControlling: AnyObject {
+    var permission: LocalNotificationPermission { get }
+    func refreshPermission() async
+    func requestPermission() async -> Bool
+    func deliver(accountLabel: String, event: QuotaAlertEvent) async -> Bool
+}
+
+@MainActor
+final class LocalNotificationController: NSObject, LocalNotificationControlling, UNUserNotificationCenterDelegate {
+    private(set) var permission: LocalNotificationPermission = .unknown
+    private let center: UNUserNotificationCenter
+
+    override init() {
+        center = .current()
+        super.init()
+        center.delegate = self
+    }
+
+    func refreshPermission() async {
+        let settings = await center.notificationSettings()
+        permission = Self.permission(for: settings.authorizationStatus)
+    }
+
+    func requestPermission() async -> Bool {
+        do {
+            let granted = try await center.requestAuthorization(options: [.alert, .sound])
+            await refreshPermission()
+            return granted && permission == .authorized
+        } catch {
+            permission = .unavailable
+            return false
+        }
+    }
+
+    func deliver(accountLabel: String, event: QuotaAlertEvent) async -> Bool {
+        await refreshPermission()
+        guard permission == .authorized else { return false }
+        let content = UNMutableNotificationContent()
+        content.title = "Codex quota"
+        content.body = Self.message(accountLabel: accountLabel, event: event)
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        do {
+            try await center.add(request)
+            return true
+        } catch {
+            await refreshPermission()
+            return false
+        }
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
+    private static func permission(for status: UNAuthorizationStatus) -> LocalNotificationPermission {
+        switch status {
+        case .notDetermined: .notDetermined
+        case .denied: .denied
+        case .authorized, .provisional, .ephemeral: .authorized
+        @unknown default: .unavailable
+        }
+    }
+
+    private static func message(accountLabel: String, event: QuotaAlertEvent) -> String {
+        switch event {
+        case let .weeklyThreshold(threshold):
+            "\(accountLabel) crossed \(threshold)% of its weekly allowance."
+        case .ahead:
+            "\(accountLabel) is ahead of the current quota slice."
+        case .reached:
+            "\(accountLabel) has reached its reported allowance."
+        }
+    }
+}

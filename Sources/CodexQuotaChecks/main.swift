@@ -56,6 +56,7 @@ struct CodexQuotaChecks {
         FormattingChecks.run()
         LibraryNoticeChecks.run()
         QuotaRefreshPolicyChecks.run()
+        QuotaAlertChecks.run()
         HistoryChecks.run()
         await RefreshSchedulerChecks.run()
         await SessionChecks.run()
@@ -66,6 +67,78 @@ struct CodexQuotaChecks {
             fputs("\(Check.failures.count) failed\n", stderr)
             exit(1)
         }
+    }
+}
+
+enum QuotaAlertChecks {
+    static func run() {
+        defaultsAndOlderStoresAreCompatible()
+        thresholdCrossingsRequireATransitionAndDeduplicate()
+        reachedAndReceiptPruningAreWindowScoped()
+    }
+
+    static func defaultsAndOlderStoresAreCompatible() {
+        let preferences = QuotaAlertPreferences()
+        Check.ok(!preferences.enabled)
+        Check.equal(preferences.weeklyThreshold, 80)
+        Check.equal(QuotaAlertPreferences(enabled: true, weeklyThreshold: 0).weeklyThreshold, 1)
+        let json = #"{"version":1,"accounts":[],"samples":[],"appearance":"system"}"#.data(using: .utf8)!
+        do {
+            let decoded = try JSONDecoder().decode(StoreFile.self, from: json)
+            Check.ok(!decoded.alertPreferences.enabled)
+            Check.equal(decoded.alertReceipts, [])
+        } catch {
+            Check.fail("older alert-free store did not decode: \(error)")
+        }
+    }
+
+    static func thresholdCrossingsRequireATransitionAndDeduplicate() {
+        let reset = Date(timeIntervalSince1970: 2_000_000_000)
+        let prior = UsageSample.make(accountId: "a", sampledAt: reset.addingTimeInterval(-100), usedPercent: 79, resetsAt: reset)
+        let current = UsageSample.make(accountId: "a", sampledAt: reset.addingTimeInterval(-50), usedPercent: 80, resetsAt: reset)
+        let preferences = QuotaAlertPreferences(enabled: true, weeklyThreshold: 80)
+        let crossing = QuotaAlerts.candidates(
+            accountId: "a", previousSample: prior, previousPace: nil, sample: current, pace: nil,
+            preferences: preferences, receipts: []
+        )
+        Check.equal(crossing.map(\.event), [.weeklyThreshold(80)])
+        Check.equal(
+            QuotaAlerts.candidates(
+                accountId: "a", previousSample: nil, previousPace: nil, sample: current, pace: nil,
+                preferences: preferences, receipts: []
+            ),
+            []
+        )
+        let receipts = QuotaAlerts.addingReceipt(for: crossing[0], deliveredAt: current.sampledAt, to: [], activeResetDates: [reset])
+        Check.equal(
+            QuotaAlerts.candidates(
+                accountId: "a", previousSample: prior, previousPace: nil, sample: current, pace: nil,
+                preferences: preferences, receipts: receipts
+            ),
+            []
+        )
+        Check.equal(
+            QuotaAlerts.candidates(
+                accountId: "b", previousSample: UsageSample.make(accountId: "b", sampledAt: prior.sampledAt, usedPercent: 79, resetsAt: reset),
+                previousPace: nil,
+                sample: UsageSample.make(accountId: "b", sampledAt: current.sampledAt, usedPercent: 80, resetsAt: reset),
+                pace: nil, preferences: preferences, receipts: receipts
+            ).count,
+            1
+        )
+    }
+
+    static func reachedAndReceiptPruningAreWindowScoped() {
+        let reset = Date(timeIntervalSince1970: 2_100_000_000)
+        let previous = UsageSample.make(accountId: "a", sampledAt: reset.addingTimeInterval(-100), usedPercent: 90, resetsAt: reset)
+        let reached = UsageSample.make(accountId: "a", sampledAt: reset.addingTimeInterval(-50), usedPercent: 100, resetsAt: reset, reached: "limit reached")
+        let candidates = QuotaAlerts.candidates(
+            accountId: "a", previousSample: previous, previousPace: nil, sample: reached, pace: nil,
+            preferences: QuotaAlertPreferences(enabled: true), receipts: []
+        )
+        Check.equal(candidates.map(\.event), [.reached])
+        let obsolete = QuotaAlertReceipt(accountId: "a", resetAt: reset.addingTimeInterval(-604_800), eventId: "reached", deliveredAt: previous.sampledAt)
+        Check.equal(QuotaAlerts.prunedReceipts([obsolete], activeResetDates: [reset]), [])
     }
 }
 

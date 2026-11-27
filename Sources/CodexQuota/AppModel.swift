@@ -8,11 +8,13 @@ import Observation
 final class AppModel {
     static let shared = AppModel()
     let loginItem = LoginItemController()
+    private let notifications: LocalNotificationControlling
 
     private(set) var store: StoreFile
     private(set) var phase: [String: AccountPhase] = [:]
     private(set) var banners: [String: String] = [:]
     private(set) var authRequired: Set<String> = []
+    private(set) var alertPermission: LocalNotificationPermission = .unknown
     private var libraryNotice = LibraryNoticeState()
     private(set) var libraryReady = false
     private let history: HistoryStore
@@ -21,9 +23,14 @@ final class AppModel {
     private var refreshRunning = false
     private var refreshAgain = false
 
-    init(history: HistoryStore = .resolve(), service: QuotaService = .production()) {
+    init(
+        history: HistoryStore = .resolve(),
+        service: QuotaService = .production(),
+        notifications: LocalNotificationControlling = LocalNotificationController()
+    ) {
         self.history = history
         self.service = service
+        self.notifications = notifications
         do {
             let loaded = try history.load()
             store = loaded.store
@@ -49,6 +56,10 @@ final class AppModel {
         libraryNotice.displayedNotice
     }
 
+    var alertsEnabled: Bool {
+        store.alertPreferences.enabled && alertPermission == .authorized
+    }
+
     var selectedAccount: AccountRecord? {
         let id = store.selectedAccountId ?? store.accounts.first?.id
         return store.accounts.first { $0.id == id }
@@ -72,6 +83,8 @@ final class AppModel {
         guard libraryReady else { return }
         guard loop == nil else { return }
         loop = Task { [weak self] in
+            await self?.notifications.refreshPermission()
+            self?.alertPermission = self?.notifications.permission ?? .unknown
             await self?.refreshAll()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(QuotaTiming.refreshInterval * 1_000_000_000))
@@ -108,6 +121,40 @@ final class AppModel {
         persist()
     }
 
+    func setAlertsEnabled(_ enabled: Bool) async {
+        guard libraryReady else { return }
+        let authorized: Bool
+        if enabled {
+            if notifications.permission == .authorized {
+                authorized = true
+            } else {
+                authorized = await notifications.requestPermission()
+            }
+        } else {
+            authorized = false
+        }
+        alertPermission = notifications.permission
+        var copy = store
+        copy.alertPreferences.enabled = enabled && authorized
+        store = copy
+        persist()
+    }
+
+    func setAlertThreshold(_ threshold: Int) {
+        guard libraryReady else { return }
+        let normalized = QuotaAlertPreferences.normalizedThreshold(threshold)
+        guard store.alertPreferences.weeklyThreshold != normalized else { return }
+        var copy = store
+        copy.alertPreferences.weeklyThreshold = normalized
+        store = copy
+        persist()
+    }
+
+    func refreshAlertPermission() async {
+        await notifications.refreshPermission()
+        alertPermission = notifications.permission
+    }
+
     func addAccount(label: String) {
         guard libraryReady else { return }
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -141,6 +188,9 @@ final class AppModel {
         phase[id] = nil
         banners[id] = nil
         authRequired.remove(id)
+        var cleaned = store
+        cleaned.alertReceipts.removeAll { $0.accountId == id }
+        store = cleaned
         persist()
     }
 
@@ -186,7 +236,7 @@ final class AppModel {
         banners[id] = nil
         do {
             let reading = try await service.refresh(home: account.codexHome)
-            apply(reading, to: id)
+            await apply(reading, to: id)
             phase[id] = .idle
         } catch let error as QuotaFailure {
             phase[id] = .failed(error.message)
@@ -212,7 +262,7 @@ final class AppModel {
                 phase[id] = .failed(QuotaFailure.signInFailed.message)
                 return
             }
-            apply(reading, to: id)
+            await apply(reading, to: id)
             phase[id] = .idle
         } catch let error as QuotaFailure {
             phase[id] = .failed(error.message)
@@ -264,14 +314,16 @@ final class AppModel {
         return now.timeIntervalSince(sample.sampledAt) > QuotaTiming.staleInterval
     }
 
-    private func apply(_ reading: UsageReading, to id: String) {
+    private func apply(_ reading: UsageReading, to id: String) async {
         guard libraryReady else { return }
         let sampledAt = Date()
+        let previousSample = latestSample(for: id)
+        let previousPace = previousSample.flatMap { paceReport(for: id, sample: $0, now: sampledAt) }
         guard let sample = UsageSample.merging(
             accountId: id,
             sampledAt: sampledAt,
             reading: reading,
-            previous: latestSample(for: id)
+            previous: previousSample
         ) else {
             authRequired.insert(id)
             banners[id] = "Sign in with ChatGPT to read this account."
@@ -280,6 +332,18 @@ final class AppModel {
         authRequired.remove(id)
         var copy = store
         history.record(sample, into: &copy, now: sample.sampledAt)
+        let pace = paceReport(for: id, sample: sample, now: sampledAt, store: copy)
+        let candidates = QuotaAlerts.candidates(
+            accountId: id,
+            previousSample: previousSample,
+            previousPace: previousPace,
+            sample: sample,
+            pace: pace,
+            preferences: copy.alertPreferences,
+            receipts: copy.alertReceipts
+        )
+        let activeResetDates = currentResetDates(in: copy)
+        copy.alertReceipts = QuotaAlerts.prunedReceipts(copy.alertReceipts, activeResetDates: activeResetDates)
         store = copy
         if !reading.optionalUsageSucceeded {
             banners[id] = nil
@@ -291,6 +355,44 @@ final class AppModel {
             banners[id] = nil
         }
         persist()
+        guard let account = store.accounts.first(where: { $0.id == id }) else { return }
+        for candidate in candidates {
+            let deliveredSuccessfully = await notifications.deliver(accountLabel: account.label, event: candidate.event)
+            alertPermission = notifications.permission
+            guard deliveredSuccessfully else { continue }
+            var delivered = store
+            delivered.alertReceipts = QuotaAlerts.addingReceipt(
+                for: candidate,
+                deliveredAt: Date(),
+                to: delivered.alertReceipts,
+                activeResetDates: currentResetDates(in: delivered)
+            )
+            store = delivered
+            persist()
+        }
+    }
+
+    private func paceReport(for id: String, sample: UsageSample, now: Date, store: StoreFile) -> PaceReport? {
+        guard let used = sample.usedPercent, let reset = sample.resetsAt, let minutes = sample.windowDurationMins else {
+            return nil
+        }
+        return Pace.evaluate(
+            now: now,
+            usedPercent: used,
+            resetsAt: reset,
+            windowDurationMins: minutes,
+            samples: store.samples.filter { $0.accountId == id },
+            buckets: sample.dailyBuckets
+        )
+    }
+
+    private func currentResetDates(in store: StoreFile) -> [Date] {
+        store.accounts.compactMap { account in
+            store.samples
+                .filter { $0.accountId == account.id }
+                .max { $0.sampledAt < $1.sampledAt }?
+                .resetsAt
+        }
     }
 
     private func persist() {
