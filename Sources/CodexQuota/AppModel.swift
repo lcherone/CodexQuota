@@ -156,6 +156,10 @@ final class AppModel {
         alertPermission = notifications.permission
     }
 
+    func openNotificationSettings() {
+        notifications.openNotificationSettings()
+    }
+
     func addAccount(label: String) {
         guard libraryReady else { return }
         let name = AccountRecord.normalizedLabel(label, retaining: suggestedLabel())

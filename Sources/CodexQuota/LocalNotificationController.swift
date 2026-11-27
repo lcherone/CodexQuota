@@ -1,3 +1,4 @@
+import AppKit
 import CodexQuotaCore
 import Foundation
 import UserNotifications
@@ -15,6 +16,7 @@ protocol LocalNotificationControlling: AnyObject {
     var permission: LocalNotificationPermission { get }
     func refreshPermission() async
     func requestPermission() async -> Bool
+    func openNotificationSettings()
     func deliver(accountLabel: String, event: QuotaAlertEvent) async -> Bool
 }
 
@@ -42,6 +44,18 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
         } catch {
             permission = .unavailable
             return false
+        }
+    }
+
+    func openNotificationSettings() {
+        let settingsPath = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
+        if let bundleIdentifier = Bundle.main.bundleIdentifier,
+           let appSettingsURL = URL(string: "\(settingsPath)?id=\(bundleIdentifier)"),
+           NSWorkspace.shared.open(appSettingsURL) {
+            return
+        }
+        if let notificationSettingsURL = URL(string: settingsPath) {
+            NSWorkspace.shared.open(notificationSettingsURL)
         }
     }
 

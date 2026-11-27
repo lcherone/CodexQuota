@@ -168,6 +168,9 @@ struct MainView: View {
             if model.alertPermission == .denied {
                 Text("Alerts are off. Allow Codex Quota notifications in System Settings.")
                     .foregroundStyle(palette.secondary)
+                actionButton("Open Notification Settings", icon: "gearshape") {
+                    model.openNotificationSettings()
+                }
             } else if model.alertPermission == .unavailable {
                 Text("Notifications are unavailable on this Mac.")
                     .foregroundStyle(palette.secondary)
