@@ -5,7 +5,7 @@ import ServiceManagement
 
 @MainActor
 @Observable
-final class LoginItemController {
+final class LoginItemController: LoginItemControlling {
     private(set) var status = SMAppService.mainApp.status
     public private(set) var error: String?
 

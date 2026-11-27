@@ -16,8 +16,11 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
     }
 
     public func refreshPermission() async {
-        let settings = await center.notificationSettings()
-        permission = Self.permission(for: settings.authorizationStatus)
+        permission = await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: Self.permission(for: settings.authorizationStatus))
+            }
+        }
     }
 
     public func requestPermission() async -> Bool {
@@ -67,7 +70,7 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
         [.banner, .sound]
     }
 
-    private static func permission(for status: UNAuthorizationStatus) -> LocalNotificationPermission {
+    nonisolated private static func permission(for status: UNAuthorizationStatus) -> LocalNotificationPermission {
         switch status {
         case .notDetermined: .notDetermined
         case .denied: .denied

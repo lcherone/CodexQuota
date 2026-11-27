@@ -314,7 +314,7 @@ public final class AppModel {
         phase[id] = .refreshing
         banners[id] = nil
         do {
-            let reading = try await service.refresh(home: account.codexHome)
+            let reading = try await service.refresh(account.codexHome)
             await apply(reading, to: id)
             refreshFailures.remove(id)
             phase[id] = .idle
@@ -354,7 +354,8 @@ public final class AppModel {
         phase[id] = .signingIn
         banners[id] = nil
         let task = Task { [weak self] in
-            await self?.performSignIn(id, token: token)
+            guard let self else { return }
+            await self.performSignIn(id, token: token)
         }
         signInOperations[id] = SignInOperation(token: token, task: task, presentation: presentation)
     }
@@ -376,7 +377,7 @@ public final class AppModel {
             return
         }
         do {
-            let reading = try await service.signIn(home: account.codexHome) { url in
+            let reading = try await service.signIn(account.codexHome) { url in
                 Task { @MainActor [weak self] in self?.openBrowser(url) }
             }
             try Task.checkCancellation()
@@ -411,7 +412,7 @@ public final class AppModel {
         guard let account = store.accounts.first(where: { $0.id == id }) else { return }
         phase[id] = .refreshing
         do {
-            try await service.signOut(home: account.codexHome)
+            try await service.signOut(account.codexHome)
             authRequired.insert(id)
             phase[id] = .idle
             banners[id] = "Signed out on this Mac."
