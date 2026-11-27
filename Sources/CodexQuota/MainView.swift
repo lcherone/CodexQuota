@@ -1,5 +1,6 @@
 import AppKit
 import CodexQuotaCore
+import CodexQuotaModel
 import SwiftUI
 
 struct MainView: View {

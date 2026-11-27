@@ -9,13 +9,17 @@ let package = Package(
     ],
     targets: [
         .target(name: "CodexQuotaCore"),
-        .executableTarget(
-            name: "CodexQuota",
+        .target(
+            name: "CodexQuotaModel",
             dependencies: ["CodexQuotaCore"]
         ),
         .executableTarget(
+            name: "CodexQuota",
+            dependencies: ["CodexQuotaCore", "CodexQuotaModel"]
+        ),
+        .executableTarget(
             name: "CodexQuotaChecks",
-            dependencies: ["CodexQuotaCore"]
+            dependencies: ["CodexQuotaCore", "CodexQuotaModel"]
         )
     ]
 )

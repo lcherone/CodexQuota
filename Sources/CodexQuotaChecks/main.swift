@@ -1,4 +1,5 @@
 import CodexQuotaCore
+import CodexQuotaModel
 import Darwin
 import Foundation
 
@@ -59,6 +60,7 @@ struct CodexQuotaChecks {
         QuotaRefreshPolicyChecks.run()
         QuotaAlertChecks.run()
         HistoryChecks.run()
+        await AppModelWorkflowChecks.run()
         await RefreshSchedulerChecks.run()
         await SessionChecks.run()
         if Check.failures.isEmpty {
@@ -68,6 +70,147 @@ struct CodexQuotaChecks {
             fputs("\(Check.failures.count) failed\n", stderr)
             exit(1)
         }
+    }
+}
+
+@MainActor
+private final class CheckNotifications: LocalNotificationControlling {
+    var permission: LocalNotificationPermission = .authorized
+    func refreshPermission() async {}
+    func requestPermission() async -> Bool { true }
+    func openNotificationSettings() {}
+    func deliver(accountLabel: String, event: QuotaAlertEvent) async -> Bool { true }
+}
+
+@MainActor
+private final class CheckLoginItem: LoginItemControlling {
+    var error: String? { nil }
+    var canConfigure: Bool { false }
+    var isEnabled: Bool { false }
+    var needsApproval: Bool { false }
+    func refresh() {}
+    func setEnabled(_ enabled: Bool) {}
+    func openSettings() {}
+}
+
+private final class WorkflowState: @unchecked Sendable {
+    private let lock = NSLock()
+    var refreshResults: [Result<UsageReading, Error>] = []
+    var signInResults: [Result<UsageReading, Error>] = []
+    var suspendSignIn = false
+    var saveFails = false
+    var deletionFails = false
+    var signInStarts = 0
+    private var identifiers = ["account-a", "account-b"]
+
+    func nextRefresh() throws -> UsageReading {
+        lock.lock(); defer { lock.unlock() }
+        return try refreshResults.removeFirst().get()
+    }
+    func nextSignIn() async throws -> UsageReading {
+        let suspend = beginSignIn()
+        if suspend { try await Task.sleep(nanoseconds: 60_000_000_000) }
+        return try finishSignIn()
+    }
+    func beginSignIn() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        signInStarts += 1
+        return suspendSignIn
+    }
+    func nextIdentifier() -> String {
+        lock.lock(); defer { lock.unlock() }
+        return identifiers.removeFirst()
+    }
+    func finishSignIn() throws -> UsageReading {
+        lock.lock(); defer { lock.unlock() }
+        return try signInResults.removeFirst().get()
+    }
+}
+
+@MainActor
+enum AppModelWorkflowChecks {
+    static func run() async {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("CodexQuota-AppModel-\(UUID().uuidString)")
+        let historyStore = HistoryStore(directory: root)
+        let state = WorkflowState()
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        let reading = UsageReading(
+            identity: .workflow(type: "chatgpt", email: "person@example.test", planType: "plus"),
+            weekly: .workflow(limitId: "codex", limitName: "Codex", planType: "plus", usedPercent: 25, windowDurationMins: QuotaTiming.weeklyMinutes, resetsAt: now.addingTimeInterval(86_400), reached: nil)
+        )
+        state.refreshResults = [.success(reading), .success(reading)]
+        var history = AppHistory(historyStore)
+        history.save = { store in
+            if state.saveFails { throw QuotaFailure.library("controlled save failure") }
+            try historyStore.save(store)
+        }
+        history.removingAccount = { id, store in
+            if state.deletionFails { throw QuotaFailure.library("controlled deletion failure") }
+            return try historyStore.removingAccount(id, from: store)
+        }
+        let service = AppQuotaService(
+            refresh: { _ in try state.nextRefresh() },
+            signIn: { _, _ in try await state.nextSignIn() },
+            signOut: { _ in }
+        )
+        let model = AppModel(
+            history: history, service: service, notifications: CheckNotifications(), loginItem: CheckLoginItem(),
+            openBrowser: { _ in Check.fail("workflow check opened a browser") }, now: { now },
+            makeID: { state.nextIdentifier() }
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        model.addAccount(label: "Personal")
+        await settle()
+        let first = model.store.accounts[0]
+        Check.equal(first.id, "account-a")
+        Check.equal(model.latestSample(for: first.id)?.usedPercent, 25)
+        model.renameAccount(first.id, label: "Primary")
+        Check.equal(model.store.accounts[0].codexHome, first.codexHome)
+
+        state.saveFails = true
+        model.renameAccount(first.id, label: "Unsaved")
+        Check.notNil(model.libraryNote)
+        state.saveFails = false
+        model.renameAccount(first.id, label: "Recovered")
+        Check.isNil(model.libraryNote)
+
+        model.addAccount(label: "Work")
+        await settle()
+        let second = model.store.accounts[1]
+        model.select(first.id)
+        Check.equal(model.selectedAccount?.id, first.id)
+        state.refreshResults = [.failure(QuotaFailure.refused("controlled refresh"))]
+        await model.refresh(first.id)
+        Check.equal(model.latestSample(for: first.id)?.usedPercent, 25)
+        Check.ok(model.phase[first.id] != .idle)
+
+        state.suspendSignIn = true
+        model.signIn(first.id)
+        await Task.yield()
+        model.cancelSignIn(first.id)
+        await settle()
+        Check.equal(model.latestSample(for: first.id)?.usedPercent, 25)
+        Check.ok(!model.isBusy(first.id))
+        state.suspendSignIn = false
+        state.signInResults = [.success(reading)]
+        model.signIn(first.id)
+        await settle()
+        Check.equal(model.phase[first.id], .idle)
+        Check.equal(state.signInStarts, 2)
+
+        let beforeRemoval = model.store
+        state.deletionFails = true
+        model.removeAccount(second.id)
+        Check.equal(model.store, beforeRemoval)
+        state.deletionFails = false
+        model.removeAccount(second.id)
+        Check.ok(!model.store.accounts.contains { $0.id == second.id })
+        Check.equal(model.selectedAccount?.id, first.id)
+    }
+
+    private static func settle() async {
+        for _ in 0..<20 { await Task.yield() }
     }
 }
 

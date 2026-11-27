@@ -1,5 +1,33 @@
 import Foundation
 
+public extension UsageReading {
+    init(
+        identity: AccountIdentity?, weekly: WeeklyWindow?, shortWindow: ShortWindow? = nil,
+        lifetimeTokens: Int64? = nil, peakDailyTokens: Int64? = nil,
+        dailyBuckets: [DailyBucket] = [], optionalUsageSucceeded: Bool = true
+    ) {
+        self.identity = identity
+        self.weekly = weekly
+        self.shortWindow = shortWindow
+        self.lifetimeTokens = lifetimeTokens
+        self.peakDailyTokens = peakDailyTokens
+        self.dailyBuckets = dailyBuckets
+        self.optionalUsageSucceeded = optionalUsageSucceeded
+    }
+}
+
+public extension AccountIdentity {
+    static func workflow(type: String, email: String?, planType: String?) -> AccountIdentity {
+        AccountIdentity(type: type, email: email, planType: planType)
+    }
+}
+
+public extension WeeklyWindow {
+    static func workflow(limitId: String?, limitName: String, planType: String?, usedPercent: Double, windowDurationMins: Double, resetsAt: Date?, reached: String?) -> WeeklyWindow {
+        WeeklyWindow(limitId: limitId, limitName: limitName, planType: planType, usedPercent: usedPercent, windowDurationMins: windowDurationMins, resetsAt: resetsAt, reached: reached)
+    }
+}
+
 public struct QuotaService: Sendable {
     public var launch: @Sendable () throws -> CodexLaunch
     public var extraEnvironment: [String: String]

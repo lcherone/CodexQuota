@@ -124,6 +124,8 @@ Checks run against a local mock. They do not call OpenAI and they do not read a 
 swift run CodexQuotaChecks
 ```
 
+The same check executable includes isolated production `AppModel` workflows using controlled services and task-scoped temporary storage. Those scenarios do not open a browser, deliver notifications, start Codex, or read the user's real Codex home.
+
 More detail is in [Build and run](docs/GETTING-STARTED.md).
 
 ## Status

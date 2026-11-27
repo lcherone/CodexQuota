@@ -1,4 +1,5 @@
 import Foundation
+import CodexQuotaModel
 import Observation
 import ServiceManagement
 
@@ -6,23 +7,23 @@ import ServiceManagement
 @Observable
 final class LoginItemController {
     private(set) var status = SMAppService.mainApp.status
-    private(set) var error: String?
+    public private(set) var error: String?
 
-    var canConfigure: Bool {
+    public var canConfigure: Bool {
         let bundle = Bundle.main.bundleURL.standardizedFileURL
         let userApplications = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications").path
         return bundle.pathExtension == "app"
             && (bundle.path.hasPrefix("/Applications/") || bundle.path.hasPrefix(userApplications + "/"))
     }
 
-    var isEnabled: Bool { status == .enabled || status == .requiresApproval }
-    var needsApproval: Bool { status == .requiresApproval }
+    public var isEnabled: Bool { status == .enabled || status == .requiresApproval }
+    public var needsApproval: Bool { status == .requiresApproval }
 
-    func refresh() {
+    public func refresh() {
         status = SMAppService.mainApp.status
     }
 
-    func setEnabled(_ enabled: Bool) {
+    public func setEnabled(_ enabled: Bool) {
         guard canConfigure else { return }
         error = nil
         do {
@@ -37,7 +38,7 @@ final class LoginItemController {
         refresh()
     }
 
-    func openSettings() {
+    public func openSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }
 }

@@ -17,7 +17,7 @@ swift run CodexQuotaChecks
 ./scripts/build-app.sh
 ```
 
-`CodexQuotaChecks` talks only to the local mock in `Tests/Fixtures/mock_app_server.py`. It does not call OpenAI and it does not read a Codex home that already has a login. This Mac's command-line tools do not include XCTest, so the checks are a small executable rather than an XCTest bundle.
+`CodexQuotaChecks` talks only to the local mock in `Tests/Fixtures/mock_app_server.py` and controlled application-model dependencies backed by task-scoped temporary storage. It does not call OpenAI, open a browser, deliver system notifications, or read a Codex home that already has a login. This Mac's command-line tools do not include XCTest, so the checks are a small executable rather than an XCTest bundle.
 
 ## Account model
 

@@ -1,5 +1,6 @@
 import AppKit
 import CodexQuotaCore
+import CodexQuotaModel
 import SwiftUI
 
 @main
@@ -25,8 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         NSApp.applicationIconImage = AppIcon.image()
         installMainMenu()
-        status.install(model: .shared)
-        AppModel.shared.start()
+        status.install(model: appModel)
+        appModel.start()
         let launchEvent = NSAppleEventManager.shared().currentAppleEvent
         let loginLaunch = launchEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
         if !loginLaunch, !CommandLine.arguments.contains("--background") {

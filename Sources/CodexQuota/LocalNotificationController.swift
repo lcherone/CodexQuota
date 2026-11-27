@@ -1,24 +1,8 @@
 import AppKit
 import CodexQuotaCore
+import CodexQuotaModel
 import Foundation
 import UserNotifications
-
-enum LocalNotificationPermission: Equatable {
-    case unknown
-    case notDetermined
-    case authorized
-    case denied
-    case unavailable
-}
-
-@MainActor
-protocol LocalNotificationControlling: AnyObject {
-    var permission: LocalNotificationPermission { get }
-    func refreshPermission() async
-    func requestPermission() async -> Bool
-    func openNotificationSettings()
-    func deliver(accountLabel: String, event: QuotaAlertEvent) async -> Bool
-}
 
 @MainActor
 final class LocalNotificationController: NSObject, LocalNotificationControlling, UNUserNotificationCenterDelegate {
@@ -31,12 +15,12 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
         center.delegate = self
     }
 
-    func refreshPermission() async {
+    public func refreshPermission() async {
         let settings = await center.notificationSettings()
         permission = Self.permission(for: settings.authorizationStatus)
     }
 
-    func requestPermission() async -> Bool {
+    public func requestPermission() async -> Bool {
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .sound])
             await refreshPermission()
@@ -47,7 +31,7 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
         }
     }
 
-    func openNotificationSettings() {
+    public func openNotificationSettings() {
         let settingsPath = "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
         if let bundleIdentifier = Bundle.main.bundleIdentifier,
            let appSettingsURL = URL(string: "\(settingsPath)?id=\(bundleIdentifier)"),
@@ -59,7 +43,7 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
         }
     }
 
-    func deliver(accountLabel: String, event: QuotaAlertEvent) async -> Bool {
+    public func deliver(accountLabel: String, event: QuotaAlertEvent) async -> Bool {
         await refreshPermission()
         guard permission == .authorized else { return false }
         let content = UNMutableNotificationContent()
