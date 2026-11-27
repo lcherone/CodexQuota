@@ -209,7 +209,7 @@ The panel footer offers System, Light, and Dark. System follows the Mac appearan
 
 Selecting a different idle account refreshes it immediately when it has no reading or its reading is more than 15 minutes old. The retained reading stays visible while that guarded refresh runs. Fresh accounts, the already-selected account, and accounts already refreshing or signing in do not start another refresh. This complements the existing startup and five-minute refresh cadence.
 
-The weeks section is lifetime tokens, peak day, recorded tokens, completed-week average, current open-week usage, and up to eight week rows. Removing an account confirms first, and only deletes a home the app created.
+The weeks section is lifetime tokens, peak day, recorded tokens, completed-week average, current open-week usage, and retained week rows in newest-first order. It initially shows the six newest weeks; when more are retained, a disclosure reveals every retained week and can collapse the list to six again. Selecting another account restores the compact state. Removing an account confirms first, and only deletes a home the app created.
 
 ## Build sequence
 

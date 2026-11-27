@@ -10,6 +10,7 @@ struct MainView: View {
     @State private var draft = ""
     @State private var confirmingRemoval = false
     @State private var dailyExpanded = false
+    @State private var weeklyHistoryExpanded = false
     @FocusState private var nameFocused: Bool
 
     private var palette: Palette { Palette.current(resolvedScheme) }
@@ -59,6 +60,7 @@ struct MainView: View {
             confirmingRemoval = false
             adding = false
             dailyExpanded = false
+            weeklyHistoryExpanded = false
         }
         .onChange(of: adding) {
             if !adding { nameFocused = false }
@@ -522,17 +524,23 @@ struct MainView: View {
                     .foregroundStyle(palette.secondary)
             } else {
                 ForEach(Array(weeks.prefix(6))) { week in
-                    HStack(spacing: 8) {
-                        Text(week.complete ? "Ended \(LondonClock.dayLabel(week.resetsAt))" : "Resets \(LondonClock.dayLabel(week.resetsAt))")
-                            .foregroundStyle(palette.ink)
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        Text("\(Int(week.usedPercent.rounded()))%")
-                            .monospacedDigit()
-                            .foregroundStyle(palette.ink)
-                            .frame(width: 40, alignment: .trailing)
+                    weekHistoryRow(week)
+                }
+                if weeks.count > 6 {
+                    DisclosureGroup(isExpanded: $weeklyHistoryExpanded) {
+                        ForEach(Array(weeks.dropFirst(6))) { week in
+                            weekHistoryRow(week)
+                        }
+                    } label: {
+                        Text(weeklyHistoryExpanded ? "Show fewer weeks" : "Show all \(weeks.count) weeks")
                     }
                     .font(.system(size: 12))
+                    .foregroundStyle(palette.ink)
+                    .tint(palette.secondary)
+                    .accessibilityLabel("Weekly history")
+                    .accessibilityValue(weeklyHistoryExpanded
+                        ? "Expanded, showing all \(weeks.count) rows"
+                        : "Collapsed, showing 6 of \(weeks.count) rows")
                 }
             }
             sectionTitle("Usage stats")
@@ -588,6 +596,20 @@ struct MainView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private func weekHistoryRow(_ week: WeekStat) -> some View {
+        HStack(spacing: 8) {
+            Text(week.complete ? "Ended \(LondonClock.dayLabel(week.resetsAt))" : "Resets \(LondonClock.dayLabel(week.resetsAt))")
+                .foregroundStyle(palette.ink)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text("\(Int(week.usedPercent.rounded()))%")
+                .monospacedDigit()
+                .foregroundStyle(palette.ink)
+                .frame(width: 40, alignment: .trailing)
+        }
+        .font(.system(size: 12))
     }
 
     @ViewBuilder
