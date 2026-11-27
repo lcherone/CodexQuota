@@ -556,7 +556,7 @@ struct MainView: View {
                     .tint(palette.secondary)
                     .accessibilityLabel("Weekly history")
                     .accessibilityValue(weeklyHistoryExpanded
-                        ? "Expanded, showing all \(weeks.count) rows"
+                        ? "Expanded, showing \(weeks.count) of \(weeks.count) rows"
                         : "Collapsed, showing 6 of \(weeks.count) rows")
                 }
             }
