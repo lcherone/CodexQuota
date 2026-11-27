@@ -14,6 +14,7 @@ public final class AppModel {
     public private(set) var banners: [String: String] = [:]
     public private(set) var authRequired: Set<String> = []
     public private(set) var alertPermission: LocalNotificationPermission = .unknown
+    public private(set) var aggregateRefresh: AggregateRefreshState = .idle
     private var libraryNotice = LibraryNoticeState()
     public private(set) var libraryReady = false
     private let history: AppHistory
@@ -256,10 +257,24 @@ public final class AppModel {
         phase[id] == .refreshing || phase[id] == .signingIn
     }
 
+    public var isFullRefreshRunning: Bool {
+        refreshRunning
+    }
+
     public func refreshAll() async {
+        await runFullRefresh(queueIfRunning: true)
+    }
+
+    public func refreshAllManually() async {
+        await runFullRefresh(queueIfRunning: false)
+    }
+
+    private func runFullRefresh(queueIfRunning: Bool) async {
         guard libraryReady else { return }
         if refreshRunning {
-            refreshAgain = true
+            if queueIfRunning {
+                refreshAgain = true
+            }
             return
         }
         refreshRunning = true
@@ -272,15 +287,30 @@ public final class AppModel {
         }
         let accountIDs = store.accounts.map(\.id)
         let selectedID = store.selectedAccountId ?? store.accounts.first?.id
+        let total = Set(accountIDs).count
+        aggregateRefresh = .running(total: total, completed: 0, failed: 0, busySkipped: 0)
         await RefreshScheduler.run(accountIDs: accountIDs, selectedID: selectedID) { [weak self] id in
-            await self?.refresh(id)
+            guard let self else { return }
+            let outcome = await self.performRefresh(id)
+            await self.recordAggregateRefresh(outcome)
         }
+        guard case let .running(_, completed, failed, busySkipped) = aggregateRefresh else { return }
+        aggregateRefresh = .completed(
+            total: total,
+            completed: completed,
+            failed: failed,
+            busySkipped: busySkipped
+        )
     }
 
     public func refresh(_ id: String) async {
-        guard libraryReady else { return }
-        guard let account = store.accounts.first(where: { $0.id == id }) else { return }
-        if phase[id] == .refreshing || phase[id] == .signingIn { return }
+        _ = await performRefresh(id)
+    }
+
+    private func performRefresh(_ id: String) async -> AccountRefreshOutcome {
+        guard libraryReady else { return .missingAccount }
+        guard let account = store.accounts.first(where: { $0.id == id }) else { return .missingAccount }
+        if phase[id] == .refreshing || phase[id] == .signingIn { return .busySkipped }
         phase[id] = .refreshing
         banners[id] = nil
         do {
@@ -288,13 +318,26 @@ public final class AppModel {
             await apply(reading, to: id)
             refreshFailures.remove(id)
             phase[id] = .idle
+            return .success
         } catch let error as QuotaFailure {
             refreshFailures.insert(id)
             phase[id] = .failed(error.message)
+            return .failed
         } catch {
             refreshFailures.insert(id)
             phase[id] = .failed("Codex couldn't be read.")
+            return .failed
         }
+    }
+
+    private func recordAggregateRefresh(_ outcome: AccountRefreshOutcome) {
+        guard case let .running(total, completed, failed, busySkipped) = aggregateRefresh else { return }
+        aggregateRefresh = .running(
+            total: total,
+            completed: completed + 1,
+            failed: failed + (outcome.isFailure ? 1 : 0),
+            busySkipped: busySkipped + (outcome == .busySkipped ? 1 : 0)
+        )
     }
 
     public func signIn(_ id: String) {
@@ -503,6 +546,23 @@ public enum AccountPhase: Equatable {
     case refreshing
     case signingIn
     case failed(String)
+}
+
+public enum AggregateRefreshState: Equatable {
+    case idle
+    case running(total: Int, completed: Int, failed: Int, busySkipped: Int)
+    case completed(total: Int, completed: Int, failed: Int, busySkipped: Int)
+}
+
+private enum AccountRefreshOutcome: Equatable {
+    case success
+    case failed
+    case missingAccount
+    case busySkipped
+
+    var isFailure: Bool {
+        self == .failed || self == .missingAccount
+    }
 }
 
 private struct SignInPresentation {

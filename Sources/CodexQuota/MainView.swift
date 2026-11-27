@@ -264,6 +264,15 @@ struct MainView: View {
                 actionButton("Refresh", icon: "arrow.clockwise", disabled: busy || !model.libraryReady) {
                     Task { await model.refresh(account.id) }
                 }
+                if model.store.accounts.count > 1 {
+                    actionButton(
+                        "Refresh all",
+                        icon: "arrow.triangle.2.circlepath",
+                        disabled: model.isFullRefreshRunning || !model.libraryReady
+                    ) {
+                        Task { await model.refreshAllManually() }
+                    }
+                }
                 if model.phase[account.id] == .signingIn {
                     actionButton("Cancel sign-in", icon: "xmark.circle") {
                         model.cancelSignIn(account.id)
@@ -283,9 +292,32 @@ struct MainView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let aggregateStatus = aggregateRefreshStatus {
+                Text(aggregateStatus)
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.horizontal, PanelMetrics.horizontalPadding)
         .padding(.vertical, 10)
+    }
+
+    private var aggregateRefreshStatus: String? {
+        switch model.aggregateRefresh {
+        case .idle:
+            return nil
+        case let .running(total, completed, _, _):
+            return "Refreshing all \(completed) of \(total)"
+        case let .completed(total, _, failed, busySkipped):
+            if failed == 0, busySkipped == 0 {
+                return total == 1 ? "Account refreshed" : "All accounts refreshed"
+            }
+            var parts: [String] = []
+            if failed > 0 { parts.append("\(failed) failed") }
+            if busySkipped > 0 { parts.append("\(busySkipped) busy-skipped") }
+            return "Refresh all finished: " + parts.joined(separator: ", ")
+        }
     }
 
     private func metaLine(_ account: AccountRecord, sample: UsageSample?) -> String {
