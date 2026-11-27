@@ -22,6 +22,7 @@ final class AppModel {
     private var loop: Task<Void, Never>?
     private var refreshRunning = false
     private var refreshAgain = false
+    private var signInOperations: [String: SignInOperation] = [:]
 
     init(
         history: HistoryStore = .resolve(),
@@ -245,18 +246,44 @@ final class AppModel {
         }
     }
 
-    func signIn(_ id: String) async {
+    func signIn(_ id: String) {
         guard libraryReady else { return }
-        guard let account = store.accounts.first(where: { $0.id == id }) else { return }
-        if phase[id] == .refreshing || phase[id] == .signingIn { return }
+        guard store.accounts.contains(where: { $0.id == id }) else { return }
+        guard signInOperations[id] == nil else { return }
+        if phase[id] == .refreshing { return }
+        let token = UUID()
+        let presentation = SignInPresentation(
+            phase: phase[id],
+            banner: banners[id],
+            authRequired: authRequired.contains(id)
+        )
         phase[id] = .signingIn
         banners[id] = nil
+        let task = Task { [weak self] in
+            await self?.performSignIn(id, token: token)
+        }
+        signInOperations[id] = SignInOperation(token: token, task: task, presentation: presentation)
+    }
+
+    func cancelSignIn(_ id: String) {
+        guard phase[id] == .signingIn else { return }
+        signInOperations[id]?.task.cancel()
+    }
+
+    private func performSignIn(_ id: String, token: UUID) async {
+        guard let operation = signInOperations[id], operation.token == token else { return }
+        guard let account = store.accounts.first(where: { $0.id == id }) else {
+            restoreSignInPresentation(operation.presentation, for: id)
+            signInOperations[id] = nil
+            return
+        }
         do {
             let reading = try await service.signIn(home: account.codexHome) { url in
                 Task { @MainActor in
                     NSWorkspace.shared.open(url)
                 }
             }
+            try Task.checkCancellation()
             guard reading.identity != nil else {
                 authRequired.insert(id)
                 phase[id] = .failed(QuotaFailure.signInFailed.message)
@@ -264,10 +291,25 @@ final class AppModel {
             }
             await apply(reading, to: id)
             phase[id] = .idle
+        } catch is CancellationError {
+            restoreSignInPresentation(operation.presentation, for: id)
         } catch let error as QuotaFailure {
             phase[id] = .failed(error.message)
         } catch {
             phase[id] = .failed(QuotaFailure.signInFailed.message)
+        }
+        if signInOperations[id]?.token == token {
+            signInOperations[id] = nil
+        }
+    }
+
+    private func restoreSignInPresentation(_ presentation: SignInPresentation, for id: String) {
+        phase[id] = presentation.phase
+        banners[id] = presentation.banner
+        if presentation.authRequired {
+            authRequired.insert(id)
+        } else {
+            authRequired.remove(id)
         }
     }
 
@@ -411,4 +453,16 @@ enum AccountPhase: Equatable {
     case refreshing
     case signingIn
     case failed(String)
+}
+
+private struct SignInPresentation {
+    var phase: AccountPhase?
+    var banner: String?
+    var authRequired: Bool
+}
+
+private struct SignInOperation {
+    var token: UUID
+    var task: Task<Void, Never>
+    var presentation: SignInPresentation
 }

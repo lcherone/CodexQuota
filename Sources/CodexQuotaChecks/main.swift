@@ -1,4 +1,5 @@
 import CodexQuotaCore
+import Darwin
 import Foundation
 
 enum Check {
@@ -1002,6 +1003,7 @@ enum SessionChecks {
     static func run() async {
         await refreshReadsTheMockAppServer()
         await optionalUsageFailureStillReturnsQuota()
+        await cancellingSignInStopsTheSessionAndAllowsRetry()
         await signInOpensTheReturnedLinkAndDoesNotFetchIt()
     }
 
@@ -1050,6 +1052,59 @@ enum SessionChecks {
         } catch {
             Check.fail("sign-in failed \(error)")
         }
+    }
+
+    static func cancellingSignInStopsTheSessionAndAllowsRetry() async {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let pidFile = directory.appendingPathComponent("pid")
+        let loginFile = directory.appendingPathComponent("login")
+        let home = directory.appendingPathComponent("home", isDirectory: true).path
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let service = QuotaService(launch: { launch() }, extraEnvironment: [
+                "CODEX_QUOTA_MOCK": "login-held",
+                "CODEX_QUOTA_MOCK_PID_FILE": pidFile.path,
+                "CODEX_QUOTA_MOCK_LOGIN_FILE": loginFile.path,
+            ])
+            let task = Task {
+                try await service.signIn(home: home) { _ in }
+            }
+            guard await waitForFile(loginFile, timeout: 2),
+                  let text = try? String(contentsOf: pidFile, encoding: .utf8),
+                  let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                task.cancel()
+                _ = try? await task.value
+                Check.fail("held sign-in did not establish a mock session")
+                return
+            }
+            let cancelledAt = Date()
+            task.cancel()
+            do {
+                _ = try await task.value
+                Check.fail("cancelled sign-in unexpectedly succeeded")
+            } catch is CancellationError {
+                Check.ok(Date().timeIntervalSince(cancelledAt) < 2, "sign-in cancellation was not prompt")
+            } catch {
+                Check.fail("cancelled sign-in returned \(error)")
+            }
+            Check.ok(kill(pid, 0) != 0 && errno == ESRCH, "mock app-server remained alive after cancellation")
+
+            let retryService = QuotaService(launch: { launch() }, extraEnvironment: ["CODEX_QUOTA_MOCK": "login"])
+            let reading = try await retryService.signIn(home: home) { _ in }
+            Check.close(reading.weekly?.usedPercent, 10, accuracy: 0.001)
+        } catch {
+            Check.fail("sign-in cancellation check failed \(error)")
+        }
+    }
+
+    static func waitForFile(_ url: URL, timeout: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: url.path) { return true }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return false
     }
 
     static func launch() -> CodexLaunch {

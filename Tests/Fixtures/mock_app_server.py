@@ -8,8 +8,14 @@ import sys
 sys.stdout.reconfigure(line_buffering=True)
 
 MODE = os.environ.get("CODEX_QUOTA_MOCK", "quota")
+PID_FILE = os.environ.get("CODEX_QUOTA_MOCK_PID_FILE")
+LOGIN_FILE = os.environ.get("CODEX_QUOTA_MOCK_LOGIN_FILE")
 login_started = False
 initialized = False
+
+if PID_FILE:
+    with open(PID_FILE, "w", encoding="utf-8") as output:
+        output.write(str(os.getpid()))
 
 LIMITS = {
     "rateLimits": {
@@ -51,6 +57,8 @@ def send(payload):
 
 
 def account_body():
+    if MODE == "login-held":
+        return {"account": None, "requiresOpenaiAuth": True}
     if MODE == "login" and not login_started:
         return {"account": None, "requiresOpenaiAuth": True}
     return {
@@ -83,6 +91,9 @@ for raw in sys.stdin:
         continue
     if method == "account/login/start":
         login_started = True
+        if LOGIN_FILE:
+            with open(LOGIN_FILE, "w", encoding="utf-8") as output:
+                output.write("started")
         send({
             "id": request_id,
             "result": {"type": "chatgpt", "loginId": "login-1", "authUrl": "https://example.test/login"},

@@ -253,9 +253,13 @@ struct MainView: View {
                 actionButton("Refresh", icon: "arrow.clockwise", disabled: busy || !model.libraryReady) {
                     Task { await model.refresh(account.id) }
                 }
-                if model.authRequired.contains(account.id) || sample == nil {
+                if model.phase[account.id] == .signingIn {
+                    actionButton("Cancel sign-in", icon: "xmark.circle") {
+                        model.cancelSignIn(account.id)
+                    }
+                } else if model.authRequired.contains(account.id) || sample == nil {
                     actionButton("Sign in", icon: "person.crop.circle.badge.plus", prominent: true, disabled: busy || !model.libraryReady) {
-                        Task { await model.signIn(account.id) }
+                        model.signIn(account.id)
                     }
                 } else {
                     actionButton("Sign out", icon: "rectangle.portrait.and.arrow.right", disabled: busy || !model.libraryReady) {
