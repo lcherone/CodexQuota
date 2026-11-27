@@ -143,8 +143,10 @@ final class AppModel {
                 Task { await self.refreshAll() }
             }
         }
-        for account in store.accounts {
-            await refresh(account.id)
+        let accountIDs = store.accounts.map(\.id)
+        let selectedID = store.selectedAccountId ?? store.accounts.first?.id
+        await RefreshScheduler.run(accountIDs: accountIDs, selectedID: selectedID) { [weak self] id in
+            await self?.refresh(id)
         }
     }
 
@@ -166,7 +168,7 @@ final class AppModel {
 
     func signIn(_ id: String) async {
         guard let account = store.accounts.first(where: { $0.id == id }) else { return }
-        if phase[id] == .signingIn { return }
+        if phase[id] == .refreshing || phase[id] == .signingIn { return }
         phase[id] = .signingIn
         banners[id] = nil
         do {

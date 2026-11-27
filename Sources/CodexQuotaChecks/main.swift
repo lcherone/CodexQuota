@@ -55,6 +55,7 @@ struct CodexQuotaChecks {
         UsageChecks.run()
         FormattingChecks.run()
         HistoryChecks.run()
+        await RefreshSchedulerChecks.run()
         await SessionChecks.run()
         if Check.failures.isEmpty {
             print("CodexQuotaChecks passed")
@@ -63,6 +64,130 @@ struct CodexQuotaChecks {
             fputs("\(Check.failures.count) failed\n", stderr)
             exit(1)
         }
+    }
+}
+
+enum RefreshSchedulerChecks {
+    static func run() async {
+        await selectedRunsFirstAndBackgroundWorkIsBounded()
+        await absentSelectionAndEmptyLibraryFollowProductionPolicy()
+    }
+
+    static func selectedRunsFirstAndBackgroundWorkIsBounded() async {
+        let probe = SchedulerProbe()
+        let scheduling = Task {
+            await RefreshScheduler.run(
+                accountIDs: ["background-1", "selected", "background-2", "background-1", "background-3"],
+                selectedID: "selected"
+            ) { id in
+                await probe.run(id)
+            }
+        }
+
+        await probe.waitForStartCount(1)
+        var snapshot = await probe.snapshot()
+        Check.equal(snapshot.started, ["selected"])
+        Check.equal(snapshot.active, 1)
+
+        await probe.release("selected")
+        await probe.waitForStartCount(3)
+        snapshot = await probe.snapshot()
+        Check.equal(Set(snapshot.started), Set(["selected", "background-1", "background-2"]))
+        Check.equal(snapshot.active, 2)
+
+        await probe.release("background-1")
+        await probe.waitForStartCount(4)
+        snapshot = await probe.snapshot()
+        Check.equal(Set(snapshot.started), Set(["selected", "background-1", "background-2", "background-3"]))
+        Check.equal(snapshot.maximumActive, 2)
+
+        await probe.releaseAll()
+        await scheduling.value
+        snapshot = await probe.snapshot()
+        Check.equal(snapshot.started.count, 4)
+        Check.equal(snapshot.active, 0)
+    }
+
+    static func absentSelectionAndEmptyLibraryFollowProductionPolicy() async {
+        let recorder = SchedulerRecorder()
+        await RefreshScheduler.run(accountIDs: ["first", "second", "first"], selectedID: "missing") { id in
+            await recorder.append(id)
+        }
+        Check.equal(Set(await recorder.ids), Set(["first", "second"]))
+        Check.equal((await recorder.ids).count, 2)
+
+        await RefreshScheduler.run(accountIDs: [], selectedID: "missing") { id in
+            await recorder.append(id)
+        }
+        Check.equal((await recorder.ids).count, 2)
+    }
+}
+
+actor SchedulerProbe {
+    struct Snapshot: Sendable {
+        let started: [String]
+        let active: Int
+        let maximumActive: Int
+    }
+
+    private var started: [String] = []
+    private var active = 0
+    private var maximumActive = 0
+    private var gates: [String: CheckedContinuation<Void, Never>] = [:]
+    private var startWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    func run(_ id: String) async {
+        started.append(id)
+        active += 1
+        maximumActive = max(maximumActive, active)
+        resumeSatisfiedStartWaiters()
+        await withCheckedContinuation { continuation in
+            gates[id] = continuation
+        }
+        active -= 1
+    }
+
+    func waitForStartCount(_ count: Int) async {
+        if started.count >= count { return }
+        await withCheckedContinuation { continuation in
+            startWaiters.append((count, continuation))
+        }
+    }
+
+    func release(_ id: String) {
+        gates.removeValue(forKey: id)?.resume()
+    }
+
+    func releaseAll() {
+        let continuations = gates.values
+        gates.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    func snapshot() -> Snapshot {
+        Snapshot(started: started, active: active, maximumActive: maximumActive)
+    }
+
+    private func resumeSatisfiedStartWaiters() {
+        var pending: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+        for waiter in startWaiters {
+            if started.count >= waiter.count {
+                waiter.continuation.resume()
+            } else {
+                pending.append(waiter)
+            }
+        }
+        startWaiters = pending
+    }
+}
+
+actor SchedulerRecorder {
+    private(set) var ids: [String] = []
+
+    func append(_ id: String) {
+        ids.append(id)
     }
 }
 

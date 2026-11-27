@@ -85,7 +85,7 @@ The weekly allowance is the window whose `windowDurationMins` is closest to 1008
 
 The Codex binary is `CODEX_BIN`, then `~/.local/bin/codex`, `/opt/homebrew/bin/codex`, `/usr/local/bin/codex`, `/usr/bin/codex`, then `which codex`. A set but unusable `CODEX_BIN` is an error, not a silent fallback.
 
-RPC timeout is 30 seconds. The menu refreshes every 5 minutes. A reading older than 15 minutes is stale. Server error text is dropped; the window says which method was refused.
+RPC timeout is 30 seconds. The menu refreshes every 5 minutes. Each automatic cycle snapshots the current library and selection, refreshes the selected account to a result first, then refreshes the remaining distinct accounts with at most two active at once. Per-account phase guards prevent automatic refresh from overlapping a manual refresh or sign-in for that account. Automatic requests received while a cycle is active coalesce into at most one follow-up cycle, which takes a fresh snapshot. A reading older than 15 minutes is stale. Server error text is dropped; the window says which method was refused.
 
 ## Pacing
 
