@@ -919,6 +919,29 @@ enum HistoryChecks {
             Check.throws { try history.removeHome(link.path) }
             Check.ok(FileManager.default.fileExists(atPath: link.path))
             Check.ok(FileManager.default.fileExists(atPath: sibling.path))
+            let internalTarget = try history.makeHome(id: "internal-target")
+            let internalLink = history.homesURL.appendingPathComponent("internal-linked")
+            try FileManager.default.createSymbolicLink(
+                at: internalLink,
+                withDestinationURL: URL(fileURLWithPath: internalTarget, isDirectory: true)
+            )
+            let linkedAccount = AccountRecord(
+                id: "internal-linked",
+                label: "Linked",
+                codexHome: internalLink.path,
+                createdAt: Date()
+            )
+            let linkedSample = UsageSample.make(accountId: linkedAccount.id, sampledAt: Date())
+            var linkedStore = StoreFile.empty()
+            linkedStore.accounts = [linkedAccount]
+            linkedStore.samples = [linkedSample]
+            linkedStore.selectedAccountId = linkedAccount.id
+            Check.throws { _ = try history.removingAccount(linkedAccount.id, from: linkedStore) }
+            Check.ok(FileManager.default.fileExists(atPath: internalLink.path))
+            Check.ok(FileManager.default.fileExists(atPath: internalTarget))
+            Check.equal(linkedStore.accounts, [linkedAccount])
+            Check.equal(linkedStore.samples, [linkedSample])
+            Check.equal(linkedStore.selectedAccountId, linkedAccount.id)
             try history.removeHome(owned)
             Check.ok(!FileManager.default.fileExists(atPath: owned))
         } catch {

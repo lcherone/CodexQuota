@@ -116,9 +116,12 @@ public struct HistoryStore: Sendable {
     }
 
     public func removeHome(_ path: String) throws {
-        let home = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
-        let ownedHomes = homesURL.standardizedFileURL.resolvingSymlinksInPath()
-        guard home.deletingLastPathComponent() == ownedHomes else {
+        let home = URL(fileURLWithPath: path).standardizedFileURL
+        let ownedHomes = homesURL.standardizedFileURL
+        guard home.deletingLastPathComponent() == ownedHomes,
+              home.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true,
+              home.resolvingSymlinksInPath().deletingLastPathComponent()
+                == ownedHomes.resolvingSymlinksInPath() else {
             throw QuotaFailure.library("Codex Quota refused to remove a home outside its managed homes directory.")
         }
         try removeItem(home)
