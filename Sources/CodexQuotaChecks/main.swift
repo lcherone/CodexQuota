@@ -258,6 +258,8 @@ enum PacingChecks {
         partialSliceOnlyCountsAsOverWhenTheMinimumAlreadyIs()
         menuTitles()
         weekTotalsDeduplicateBuckets()
+        completedWeekAverageExcludesCurrentWeek()
+        openWeekProvidesFallbackState()
     }
 
     static func resetAnchoredLondonExample() {
@@ -392,7 +394,41 @@ enum PacingChecks {
         Check.equal(totals.peakDailyTokens, Int64(12))
         Check.equal(totals.recordedTokens, Int64(13))
         Check.equal(totals.weeks, 2)
-        Check.close(totals.averageWeeklyPercent, 71, accuracy: 0.001)
+        Check.close(totals.completedWeekAveragePercent, 80, accuracy: 0.001)
+        Check.close(totals.currentWeekPercent, 62, accuracy: 0.001)
+    }
+
+    static func completedWeekAverageExcludesCurrentWeek() {
+        let now = london(2026, 11, 24, 12)
+        let samples = [
+            UsageSample.make(sampledAt: london(2026, 11, 11, 12), usedPercent: 60, resetsAt: london(2026, 11, 12, 17)),
+            UsageSample.make(sampledAt: london(2026, 11, 18, 12), usedPercent: 80, resetsAt: london(2026, 11, 19, 17)),
+            UsageSample.make(sampledAt: now, usedPercent: 10, resetsAt: london(2026, 11, 26, 17))
+        ]
+        let initial = UsageStats.totals(samples: samples, now: now)
+        Check.close(initial.completedWeekAveragePercent, 70, accuracy: 0.001)
+        Check.close(initial.currentWeekPercent, 10, accuracy: 0.001)
+
+        let changedCurrentWeek = samples + [
+            UsageSample.make(sampledAt: london(2026, 11, 24, 13), usedPercent: 25, resetsAt: london(2026, 11, 26, 17))
+        ]
+        let updated = UsageStats.totals(samples: changedCurrentWeek, now: now)
+        Check.close(updated.completedWeekAveragePercent, 70, accuracy: 0.001)
+        Check.close(updated.currentWeekPercent, 25, accuracy: 0.001)
+    }
+
+    static func openWeekProvidesFallbackState() {
+        let now = london(2026, 11, 24, 12)
+        let openOnly = [
+            UsageSample.make(sampledAt: now, usedPercent: 18, resetsAt: london(2026, 11, 26, 17))
+        ]
+        let totals = UsageStats.totals(samples: openOnly, now: now)
+        Check.isNil(totals.completedWeekAveragePercent)
+        Check.close(totals.currentWeekPercent, 18, accuracy: 0.001)
+
+        let unavailable = UsageStats.totals(samples: [], now: now)
+        Check.isNil(unavailable.completedWeekAveragePercent)
+        Check.isNil(unavailable.currentWeekPercent)
     }
 
     static func london(_ year: Int, _ month: Int, _ day: Int, _ hour: Int) -> Date {

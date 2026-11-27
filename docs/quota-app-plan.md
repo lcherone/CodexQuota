@@ -183,7 +183,7 @@ Dates in the file are ISO-8601. `resetsAt` on the wire is the Unix number descri
 
 History is kept for 26 weeks, capped at 4000 samples. A new sample replaces the previous one for that account when it arrives within 2 minutes and the used percent, reset, and lifetime token count are unchanged, so the checked time moves without a duplicate row.
 
-Week stats group samples by `resetsAt`. Reset times within half an hour count as the same week. A finished week uses its highest `usedPercent`. The open week uses the latest sample. Recorded tokens keep, for each `startDate`, the count from the latest sample that mentioned it. Lifetime and peak day come from the latest sample that had them. The average week is the mean of those per-week percents.
+Week stats group samples by `resetsAt`. Reset times within half an hour count as the same week. A finished week uses its highest `usedPercent`. The open week uses the latest sample. Recorded tokens keep, for each `startDate`, the count from the latest sample that mentioned it. Lifetime and peak day come from the latest sample that had them. The completed-week average is the mean of finished-week percents only, and the current open-week percent is shown separately. If there is no finished week, the current partial week is explicitly labelled as the fallback; if neither value exists, the stat stays unavailable.
 
 ## UI states
 
@@ -207,7 +207,7 @@ The panel footer offers System, Light, and Dark. System follows the Mac appearan
 | Library problem | An unsupported library or unreadable library that could not be moved stays unchanged. Account, authentication, refresh, removal, and appearance controls are unavailable until the file at the displayed location is resolved or moved and Codex Quota is relaunched. A successfully quarantined unreadable library instead starts writable and reports the preserved filename. |
 | Stale | After 15 minutes: "This reading is getting old." |
 
-The weeks section is lifetime tokens, peak day, recorded tokens, average week, and up to eight week rows. Removing an account confirms first, and only deletes a home the app created.
+The weeks section is lifetime tokens, peak day, recorded tokens, completed-week average, current open-week usage, and up to eight week rows. Removing an account confirms first, and only deletes a home the app created.
 
 ## Build sequence
 

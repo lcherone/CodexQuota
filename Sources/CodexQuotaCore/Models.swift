@@ -290,7 +290,8 @@ public struct UsageTotals: Equatable, Sendable {
     public var peakDailyTokens: Int64?
     public var recordedTokens: Int64
     public var weeks: Int
-    public var averageWeeklyPercent: Double?
+    public var completedWeekAveragePercent: Double?
+    public var currentWeekPercent: Double?
 }
 
 public enum LondonClock {

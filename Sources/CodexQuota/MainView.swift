@@ -508,8 +508,9 @@ struct MainView: View {
                 tokenCell("Peak day tokens", totals.peakDailyTokens)
                 tokenCell("Recorded tokens", totals.recordedTokens,
                           context: "Sum of daily token totals retained in this Mac's library.")
-                summaryCell("Average week", totals.averageWeeklyPercent.map { "\(Int($0.rounded()))%" } ?? "—",
-                            detail: "Average allowance used across the weeks in the library, including the current week.")
+                completedWeekCell(totals)
+                summaryCell("Current week", totals.currentWeekPercent.map { "\(Int($0.rounded()))%" } ?? "—",
+                            detail: "Allowance used in the current open week. This partial week is not included in the completed-week average.")
                 summaryCell("Current streak", dayCount(sample?.currentStreakDays),
                             detail: dayCount(sample?.currentStreakDays, exact: true))
                 summaryCell("Longest streak", dayCount(sample?.longestStreakDays),
@@ -548,6 +549,20 @@ struct MainView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func completedWeekCell(_ totals: UsageTotals) -> some View {
+        if let average = totals.completedWeekAveragePercent {
+            summaryCell("Completed-week avg", "\(Int(average.rounded()))%",
+                        detail: "Average allowance used across completed weeks in this Mac's library.")
+        } else if let current = totals.currentWeekPercent {
+            summaryCell("Partial-week fallback", "\(Int(current.rounded()))%",
+                        detail: "No completed week is available, so this is the current open week's partial usage.")
+        } else {
+            summaryCell("Completed-week avg", "—",
+                        detail: "No completed or current week usage is available.")
+        }
     }
 
     private func tokenCell(_ title: String, _ value: Int64?, context: String = "") -> some View {

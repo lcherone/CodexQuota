@@ -235,13 +235,18 @@ public enum UsageStats {
             }
         }
         let recorded = buckets.values.reduce(Int64(0)) { $0 + $1.1 }
-        let average = weeks.isEmpty ? nil : weeks.map(\.usedPercent).reduce(0, +) / Double(weeks.count)
+        let completedWeeks = weeks.filter(\.complete)
+        let completedAverage = completedWeeks.isEmpty
+            ? nil
+            : completedWeeks.map(\.usedPercent).reduce(0, +) / Double(completedWeeks.count)
+        let currentWeek = weeks.first { !$0.complete }?.usedPercent
         return UsageTotals(
             lifetimeTokens: ordered.last { $0.lifetimeTokens != nil }?.lifetimeTokens,
             peakDailyTokens: ordered.last { $0.peakDailyTokens != nil }?.peakDailyTokens,
             recordedTokens: recorded,
             weeks: weeks.count,
-            averageWeeklyPercent: average
+            completedWeekAveragePercent: completedAverage,
+            currentWeekPercent: currentWeek
         )
     }
 }

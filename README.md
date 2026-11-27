@@ -47,7 +47,7 @@ The menu-bar title is the glance: `49%`, `154% over`, or `62% wk` when today is 
 Personal and work each get a Codex home on this Mac. The list shows the week percent. Add one, and the panel reads it. Sign-in opens in the browser. The library stores readings, not tokens.
 
 **Look back without losing the plot.**
-Finished weeks stay in the list. Usage stats use compact K/M/B/T figures, with exact counts on hover. Lifetime tokens, peak day, longest turn, and current and longest streaks come from Codex. Recorded tokens and the average week come from this Mac's library. Expand Daily tokens to see every day returned in the latest reading; unavailable stats show a dash.
+Finished weeks stay in the list. Usage stats use compact K/M/B/T figures, with exact counts on hover. Lifetime tokens, peak day, longest turn, and current and longest streaks come from Codex. Recorded tokens, the completed-week average, and the current open week come from this Mac's library. When there is no completed week yet, the current partial week is clearly labelled as the fallback. Expand Daily tokens to see every day returned in the latest reading; unavailable stats show a dash.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/stats-dark.png">
