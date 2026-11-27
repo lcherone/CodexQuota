@@ -25,7 +25,7 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
 
     public func requestPermission() async -> Bool {
         do {
-            let granted = try await withCheckedThrowingContinuation { continuation in
+            let granted = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
                 center.requestAuthorization(options: [.alert, .sound]) { granted, error in
                     if let error {
                         continuation.resume(throwing: error)
