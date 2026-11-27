@@ -180,10 +180,19 @@ enum AppModelWorkflowChecks {
         let second = model.store.accounts[1]
         model.select(first.id)
         Check.equal(model.selectedAccount?.id, first.id)
+        let healthyPresentation = model.menuBarPresentation
         state.refreshResults = [.failure(QuotaFailure.refused("controlled refresh"))]
         await model.refresh(first.id)
         Check.equal(model.latestSample(for: first.id)?.usedPercent, 25)
         Check.ok(model.phase[first.id] != .idle)
+        Check.ok(model.refreshFailures.contains(first.id))
+        Check.equal(model.menuBarPresentation.title, "\(healthyPresentation.title) ⚠︎")
+        Check.ok(model.menuBarPresentation.toolTip.contains("Refresh failed; showing the retained reading."))
+
+        state.refreshResults = [.success(reading)]
+        await model.refresh(first.id)
+        Check.ok(!model.refreshFailures.contains(first.id))
+        Check.equal(model.menuBarPresentation, healthyPresentation)
 
         state.suspendSignIn = true
         model.signIn(first.id)
@@ -655,6 +664,26 @@ enum PacingChecks {
         Check.equal(single.toolTip, "Personal — 49%. Click to view usage.")
         Check.equal(single.accessibilityLabel, "Codex Quota, Personal, 49%. Show usage.")
 
+        let stale = MenuBarPresentation(
+            selectedAccountLabel: "Personal",
+            accountCount: 1,
+            stateTitle: "49%",
+            health: .stale
+        )
+        Check.equal(stale.title, "49% ⚠︎")
+        Check.equal(stale.toolTip, "Personal — 49%. This reading is older than 15 minutes. Click to view usage.")
+        Check.equal(stale.accessibilityLabel, "Codex Quota, Personal, 49%. This reading is older than 15 minutes. Show usage.")
+
+        let refreshFailed = MenuBarPresentation(
+            selectedAccountLabel: "Work",
+            accountCount: 2,
+            stateTitle: "62% wk",
+            health: .refreshFailed
+        )
+        Check.equal(refreshFailed.title, "Work · 62% wk ⚠︎")
+        Check.equal(refreshFailed.toolTip, "Work — 62% wk. Refresh failed; showing the retained reading. Click to view usage.")
+        Check.equal(refreshFailed.accessibilityLabel, "Codex Quota, Work, 62% wk. Refresh failed; showing the retained reading. Show usage.")
+
         let measured = MenuBarPresentation(selectedAccountLabel: "Personal", accountCount: 2, stateTitle: "154% over")
         Check.equal(measured.title, "Personal · 154% over")
         let weekly = MenuBarPresentation(selectedAccountLabel: "Work", accountCount: 2, stateTitle: "62% wk")
@@ -674,6 +703,14 @@ enum PacingChecks {
         Check.equal(empty.title, "Quota")
         Check.equal(empty.toolTip, "Codex Quota — click to view usage")
         Check.equal(empty.accessibilityLabel, "Codex Quota, Quota. Show usage.")
+
+        let emptyFailed = MenuBarPresentation(
+            selectedAccountLabel: nil,
+            accountCount: 0,
+            stateTitle: "Quota",
+            health: .refreshFailed
+        )
+        Check.equal(emptyFailed, empty)
     }
 
     static func weekTotalsDeduplicateBuckets() {

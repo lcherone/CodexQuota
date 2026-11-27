@@ -10,6 +10,7 @@ public final class AppModel {
 
     public private(set) var store: StoreFile
     public private(set) var phase: [String: AccountPhase] = [:]
+    public private(set) var refreshFailures: Set<String> = []
     public private(set) var banners: [String: String] = [:]
     public private(set) var authRequired: Set<String> = []
     public private(set) var alertPermission: LocalNotificationPermission = .unknown
@@ -80,11 +81,13 @@ public final class AppModel {
         guard let account = selectedAccount else {
             return MenuBarPresentation(selectedAccountLabel: nil, accountCount: 0, stateTitle: "Quota")
         }
+        let latest = latestSample(for: account.id)
+        let currentTime = now()
         let stateTitle: String
         if authRequired.contains(account.id) {
             stateTitle = "Sign in"
-        } else if let latest = latestSample(for: account.id) {
-            let pace = paceReport(for: account.id, sample: latest, now: now())
+        } else if let latest {
+            let pace = paceReport(for: account.id, sample: latest, now: currentTime)
             stateTitle = Pace.menuTitle(
                 todaySlicePercent: pace?.todaySlicePercent,
                 todayKind: pace?.todayKind ?? .unknown,
@@ -94,10 +97,19 @@ public final class AppModel {
         } else {
             stateTitle = "Quota"
         }
+        let health: MenuBarHealth
+        if refreshFailures.contains(account.id) {
+            health = .refreshFailed
+        } else if isStale(latest, now: currentTime) {
+            health = .stale
+        } else {
+            health = .current
+        }
         return MenuBarPresentation(
             selectedAccountLabel: account.label,
             accountCount: store.accounts.count,
-            stateTitle: stateTitle
+            stateTitle: stateTitle,
+            health: health
         )
     }
 
@@ -222,6 +234,7 @@ public final class AppModel {
             return
         }
         phase[id] = nil
+        refreshFailures.remove(id)
         banners[id] = nil
         authRequired.remove(id)
         var cleaned = store
@@ -273,10 +286,13 @@ public final class AppModel {
         do {
             let reading = try await service.refresh(home: account.codexHome)
             await apply(reading, to: id)
+            refreshFailures.remove(id)
             phase[id] = .idle
         } catch let error as QuotaFailure {
+            refreshFailures.insert(id)
             phase[id] = .failed(error.message)
         } catch {
+            refreshFailures.insert(id)
             phase[id] = .failed("Codex couldn't be read.")
         }
     }
