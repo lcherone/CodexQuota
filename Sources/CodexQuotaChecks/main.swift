@@ -369,6 +369,7 @@ enum PacingChecks {
         measuredHistoryBeatsTokenEstimate()
         partialSliceOnlyCountsAsOverWhenTheMinimumAlreadyIs()
         menuTitles()
+        menuBarPresentations()
         weekTotalsDeduplicateBuckets()
         completedWeekAverageExcludesCurrentWeek()
         openWeekProvidesFallbackState()
@@ -487,6 +488,33 @@ enum PacingChecks {
         Check.equal(Pace.menuTitle(todaySlicePercent: 49, todayKind: .measured, dayStatus: .under, weeklyUsed: 62), "49%")
         Check.equal(Pace.menuTitle(todaySlicePercent: 14, todayKind: .partial, dayStatus: .unknown, weeklyUsed: 62), "62% wk")
         Check.equal(Pace.menuTitle(todaySlicePercent: nil, todayKind: .unknown, dayStatus: .unknown, weeklyUsed: nil), "Quota")
+    }
+
+    static func menuBarPresentations() {
+        let single = MenuBarPresentation(selectedAccountLabel: "Personal", accountCount: 1, stateTitle: "49%")
+        Check.equal(single.title, "49%")
+        Check.equal(single.toolTip, "Personal — 49%. Click to view usage.")
+        Check.equal(single.accessibilityLabel, "Codex Quota, Personal, 49%. Show usage.")
+
+        let measured = MenuBarPresentation(selectedAccountLabel: "Personal", accountCount: 2, stateTitle: "154% over")
+        Check.equal(measured.title, "Personal · 154% over")
+        let weekly = MenuBarPresentation(selectedAccountLabel: "Work", accountCount: 2, stateTitle: "62% wk")
+        Check.equal(weekly.title, "Work · 62% wk")
+        Check.equal(MenuBarPresentation(selectedAccountLabel: "Work", accountCount: 2, stateTitle: "Sign in").title, "Work · Sign in")
+        Check.equal(MenuBarPresentation(selectedAccountLabel: "Work", accountCount: 2, stateTitle: "Quota").title, "Work · Quota")
+        Check.equal(measured.toolTip, "Personal — 154% over. Click to view usage.")
+        Check.equal(measured.accessibilityLabel, "Codex Quota, Personal, 154% over. Show usage.")
+
+        let composedLabel = "👨‍👩‍👧‍👦12345678901Z"
+        let long = MenuBarPresentation(selectedAccountLabel: composedLabel, accountCount: 2, stateTitle: "49%")
+        Check.equal(long.title, "👨‍👩‍👧‍👦1234567890… · 49%")
+        Check.equal(long.toolTip, "\(composedLabel) — 49%. Click to view usage.")
+        Check.equal(long.accessibilityLabel, "Codex Quota, \(composedLabel), 49%. Show usage.")
+
+        let empty = MenuBarPresentation(selectedAccountLabel: nil, accountCount: 0, stateTitle: "Quota")
+        Check.equal(empty.title, "Quota")
+        Check.equal(empty.toolTip, "Codex Quota — click to view usage")
+        Check.equal(empty.accessibilityLabel, "Codex Quota, Quota. Show usage.")
     }
 
     static func weekTotalsDeduplicateBuckets() {

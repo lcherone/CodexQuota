@@ -66,17 +66,28 @@ final class AppModel {
         return store.accounts.first { $0.id == id }
     }
 
-    var menuTitle: String {
-        guard let account = selectedAccount else { return "Quota" }
-        if authRequired.contains(account.id) { return "Sign in" }
-        let samples = store.samples.filter { $0.accountId == account.id }
-        guard let latest = samples.max(by: { $0.sampledAt < $1.sampledAt }) else { return "Quota" }
-        let pace = paceReport(for: account.id, sample: latest, now: Date())
-        return Pace.menuTitle(
-            todaySlicePercent: pace?.todaySlicePercent,
-            todayKind: pace?.todayKind ?? .unknown,
-            dayStatus: pace?.dayStatus ?? .unknown,
-            weeklyUsed: latest.usedPercent
+    var menuBarPresentation: MenuBarPresentation {
+        guard let account = selectedAccount else {
+            return MenuBarPresentation(selectedAccountLabel: nil, accountCount: 0, stateTitle: "Quota")
+        }
+        let stateTitle: String
+        if authRequired.contains(account.id) {
+            stateTitle = "Sign in"
+        } else if let latest = latestSample(for: account.id) {
+            let pace = paceReport(for: account.id, sample: latest, now: Date())
+            stateTitle = Pace.menuTitle(
+                todaySlicePercent: pace?.todaySlicePercent,
+                todayKind: pace?.todayKind ?? .unknown,
+                dayStatus: pace?.dayStatus ?? .unknown,
+                weeklyUsed: latest.usedPercent
+            )
+        } else {
+            stateTitle = "Quota"
+        }
+        return MenuBarPresentation(
+            selectedAccountLabel: account.label,
+            accountCount: store.accounts.count,
+            stateTitle: stateTitle
         )
     }
 

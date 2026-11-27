@@ -209,9 +209,11 @@ final class StatusController: NSObject {
     }
 
     private func applyTitle() {
-        item.button?.title = model?.menuTitle ?? "Quota"
-        item.button?.toolTip = "Codex Quota — click to view usage"
-        item.button?.setAccessibilityLabel("Codex Quota, \(model?.menuTitle ?? "Quota"). Show usage.")
+        let presentation = model?.menuBarPresentation
+            ?? MenuBarPresentation(selectedAccountLabel: nil, accountCount: 0, stateTitle: "Quota")
+        item.button?.title = presentation.title
+        item.button?.toolTip = presentation.toolTip
+        item.button?.setAccessibilityLabel(presentation.accessibilityLabel)
         if panel.isVisible {
             let previous = panel.frame.size
             fit()

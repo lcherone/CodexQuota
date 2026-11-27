@@ -41,7 +41,7 @@ The panels on this page were captured from the real app against a local stand-in
 ## What you can do
 
 **See the day and the week at once.**
-The menu-bar title is the glance: `49%`, `154% over`, or `62% wk` when today is still unknown. The panel is where the sentence lives: ahead of the slice, inside it, or still filling in.
+The menu-bar title is the glance: `49%`, `154% over`, or `62% wk` when today is still unknown. With one account it stays that compact; with more than one it adds a short selected-account name, such as `Work · 49%`. The full account name and reading remain available in the tooltip and to VoiceOver. The panel is where the sentence lives: ahead of the slice, inside it, or still filling in.
 
 **Keep more than one account.**
 Personal and work each get a Codex home on this Mac. The list shows the week percent. Add one, and the panel reads it. Sign-in opens in the browser. The library stores readings, not tokens.

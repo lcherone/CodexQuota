@@ -187,7 +187,7 @@ Week stats group samples by `resetsAt`. Reset times within half an hour count as
 
 ## UI states
 
-The panel footer offers System, Light, and Dark. System follows the Mac appearance. Light is a white panel with black text, and Dark is a black panel with white text, both with hairline rules and no coloured cards. The choice is `appearance` in `store.json` (`system`, `light`, or `dark`). A library written before that field existed stays on System. The status item is the glance: `49%`, `154% over`, `62% wk` when today is still unknown, `Sign in` when the selected account needs ChatGPT, and `Quota` when there is nothing to show. Clicking that figure shows or hides the panel.
+The panel footer offers System, Light, and Dark. System follows the Mac appearance. Light is a white panel with black text. Dark is a black panel with white text. Both have hairline rules and no coloured cards. The choice is `appearance` in `store.json` (`system`, `light`, or `dark`). A library written before that field existed stays on System. The status item is the glance: `49%`, `154% over`, `62% wk` when today is still unknown, `Sign in` when the selected account needs ChatGPT, and `Quota` when there is nothing to show. With exactly one account this wording stays compact. With multiple accounts it is prefixed by a selected-account identifier of at most 12 composed characters, for example `Work · 49%`; longer identifiers end in an ellipsis. Its tooltip and accessibility label use the full account label with the same state. Clicking the status item shows or hides the panel.
 
 | State | What you see |
 | --- | --- |
