@@ -54,6 +54,7 @@ struct CodexQuotaChecks {
         PacingChecks.run()
         UsageChecks.run()
         FormattingChecks.run()
+        LibraryNoticeChecks.run()
         HistoryChecks.run()
         await RefreshSchedulerChecks.run()
         await SessionChecks.run()
@@ -63,6 +64,60 @@ struct CodexQuotaChecks {
             for failure in Check.failures { fputs(failure + "\n", stderr) }
             fputs("\(Check.failures.count) failed\n", stderr)
             exit(1)
+        }
+    }
+}
+
+enum LibraryNoticeChecks {
+    static func run() {
+        saveFailurePersistsUntilAConfirmedRecovery()
+        durableNoticesReappearAfterRecovery()
+    }
+
+    static func saveFailurePersistsUntilAConfirmedRecovery() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        var notice = LibraryNoticeState()
+        do {
+            try Data().write(to: directory)
+            let history = HistoryStore(directory: directory)
+
+            save(.empty(), with: history, notice: &notice)
+            Check.equal(notice.displayedNotice, LibraryNoticeState.saveFailureNotice)
+
+            save(.empty(), with: history, notice: &notice)
+            Check.equal(notice.displayedNotice, LibraryNoticeState.saveFailureNotice)
+
+            try FileManager.default.removeItem(at: directory)
+            save(.empty(), with: history, notice: &notice)
+            Check.isNil(notice.displayedNotice)
+            Check.ok(FileManager.default.fileExists(atPath: history.fileURL.path))
+        } catch {
+            Check.fail("save notice recovery failed: \(error)")
+        }
+    }
+
+    static func durableNoticesReappearAfterRecovery() {
+        let durableNotices = [
+            "This library uses an unsupported version.",
+            "Codex Quota couldn't safely read the library.",
+            "The previous library couldn't be read. It was kept for inspection."
+        ]
+        for durableNotice in durableNotices {
+            var notice = LibraryNoticeState(durableNotice: durableNotice)
+            Check.equal(notice.displayedNotice, durableNotice)
+            notice.saveFailed()
+            Check.equal(notice.displayedNotice, LibraryNoticeState.saveFailureNotice)
+            notice.saveSucceeded()
+            Check.equal(notice.displayedNotice, durableNotice)
+        }
+    }
+
+    private static func save(_ store: StoreFile, with history: HistoryStore, notice: inout LibraryNoticeState) {
+        do {
+            try history.save(store)
+            notice.saveSucceeded()
+        } catch {
+            notice.saveFailed()
         }
     }
 }

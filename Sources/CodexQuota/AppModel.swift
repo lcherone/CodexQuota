@@ -13,7 +13,7 @@ final class AppModel {
     private(set) var phase: [String: AccountPhase] = [:]
     private(set) var banners: [String: String] = [:]
     private(set) var authRequired: Set<String> = []
-    private(set) var libraryNote: String?
+    private var libraryNotice = LibraryNoticeState()
     private(set) var libraryReady = false
     private let history: HistoryStore
     private let service: QuotaService
@@ -32,17 +32,21 @@ final class AppModel {
                 libraryReady = true
             case let .writableAfterQuarantine(kept):
                 libraryReady = true
-                libraryNote = "The previous library couldn't be read. It was kept at \(kept.path)."
+                libraryNotice.durableNotice = "The previous library couldn't be read. It was kept at \(kept.path)."
             case let .blocked(message):
-                libraryNote = message
+                libraryNotice.durableNotice = message
             }
         } catch let error as QuotaFailure {
             store = .empty()
-            libraryNote = "\(error.message) The library was left at \(history.fileURL.path). Resolve or move it, then relaunch Codex Quota."
+            libraryNotice.durableNotice = "\(error.message) The library was left at \(history.fileURL.path). Resolve or move it, then relaunch Codex Quota."
         } catch {
             store = .empty()
-            libraryNote = "The library couldn't be safely opened, so it was left at \(history.fileURL.path). Resolve or move it, then relaunch Codex Quota."
+            libraryNotice.durableNotice = "The library couldn't be safely opened, so it was left at \(history.fileURL.path). Resolve or move it, then relaunch Codex Quota."
         }
+    }
+
+    var libraryNote: String? {
+        libraryNotice.displayedNotice
     }
 
     var selectedAccount: AccountRecord? {
@@ -102,7 +106,7 @@ final class AppModel {
         do {
             home = try history.makeHome(id: id)
         } catch {
-            libraryNote = "A home for this account couldn't be created on this Mac."
+            libraryNotice.durableNotice = "A home for this account couldn't be created on this Mac."
             return
         }
         var copy = store
@@ -282,8 +286,9 @@ final class AppModel {
         guard libraryReady else { return }
         do {
             try history.save(store)
+            libraryNotice.saveSucceeded()
         } catch {
-            libraryNote = "The latest reading couldn't be saved on this Mac."
+            libraryNotice.saveFailed()
         }
     }
 }
