@@ -55,6 +55,7 @@ struct CodexQuotaChecks {
         UsageChecks.run()
         FormattingChecks.run()
         LibraryNoticeChecks.run()
+        QuotaRefreshPolicyChecks.run()
         HistoryChecks.run()
         await RefreshSchedulerChecks.run()
         await SessionChecks.run()
@@ -65,6 +66,43 @@ struct CodexQuotaChecks {
             fputs("\(Check.failures.count) failed\n", stderr)
             exit(1)
         }
+    }
+}
+
+enum QuotaRefreshPolicyChecks {
+    static func run() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let exactlyStale = now.addingTimeInterval(-QuotaTiming.staleInterval)
+        let stale = exactlyStale.addingTimeInterval(-1)
+        let fresh = exactlyStale.addingTimeInterval(1)
+
+        Check.ok(shouldRefresh(selectionChanged: true, latestSampledAt: nil, isBusy: false, now: now))
+        Check.ok(shouldRefresh(selectionChanged: true, latestSampledAt: stale, isBusy: false, now: now))
+        Check.ok(!shouldRefresh(selectionChanged: true, latestSampledAt: fresh, isBusy: false, now: now))
+        Check.ok(!shouldRefresh(selectionChanged: true, latestSampledAt: exactlyStale, isBusy: false, now: now))
+        Check.ok(!shouldRefresh(selectionChanged: false, latestSampledAt: stale, isBusy: false, now: now))
+        Check.ok(
+            !shouldRefresh(selectionChanged: true, latestSampledAt: stale, isBusy: true, now: now),
+            "an account already refreshing should not refresh again"
+        )
+        Check.ok(
+            !shouldRefresh(selectionChanged: true, latestSampledAt: nil, isBusy: true, now: now),
+            "an account already signing in should not refresh"
+        )
+    }
+
+    private static func shouldRefresh(
+        selectionChanged: Bool,
+        latestSampledAt: Date?,
+        isBusy: Bool,
+        now: Date
+    ) -> Bool {
+        QuotaRefreshPolicy.shouldRefreshAfterSelection(
+            selectionChanged: selectionChanged,
+            latestSampledAt: latestSampledAt,
+            isBusy: isBusy,
+            now: now
+        )
     }
 }
 

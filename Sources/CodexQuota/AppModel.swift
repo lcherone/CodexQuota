@@ -82,10 +82,21 @@ final class AppModel {
 
     func select(_ id: String) {
         guard libraryReady else { return }
+        guard store.accounts.contains(where: { $0.id == id }) else { return }
+        let selectionChanged = selectedAccount?.id != id
+        let latestSampledAt = latestSample(for: id)?.sampledAt
+        let busy = isBusy(id)
         var copy = store
         copy.selectedAccountId = id
         store = copy
         persist()
+        guard QuotaRefreshPolicy.shouldRefreshAfterSelection(
+            selectionChanged: selectionChanged,
+            latestSampledAt: latestSampledAt,
+            isBusy: busy,
+            now: Date()
+        ) else { return }
+        Task { await refresh(id) }
     }
 
     func setAppearance(_ appearance: PanelAppearance) {
