@@ -75,10 +75,11 @@ final class StatusController: NSObject {
     private var timer: Timer?
     private var globalMonitor: Any?
     private var localMonitor: Any?
+    private var availableHeight: CGFloat = 640
 
     func install(model: AppModel) {
         self.model = model
-        let host = NSHostingView(rootView: MainView(model: model))
+        let host = NSHostingView(rootView: MainView(model: model, availableHeight: availableHeight))
         host.sizingOptions = [.intrinsicContentSize]
         host.wantsLayer = true
         host.layer?.cornerRadius = 8
@@ -122,11 +123,15 @@ final class StatusController: NSObject {
 
     private func fit() {
         guard let host else { return }
+        let screen = item.button?.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        let maxHeight = max(240, (screen?.height ?? 640) - 24)
+        if availableHeight != maxHeight, let model {
+            availableHeight = maxHeight
+            host.rootView = MainView(model: model, availableHeight: availableHeight)
+        }
         host.layoutSubtreeIfNeeded()
         var size = host.fittingSize
-        size.width = 360
-        let screen = item.button?.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-        let maxHeight = max(180, (screen?.height ?? 640) - 24)
+        size.width = PanelMetrics.width
         if size.height < 80 || !size.height.isFinite {
             size.height = min(480, maxHeight)
         }

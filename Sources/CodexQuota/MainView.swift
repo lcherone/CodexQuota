@@ -4,6 +4,7 @@ import SwiftUI
 
 struct MainView: View {
     var model: AppModel
+    var availableHeight: CGFloat = 640
     @Environment(\.colorScheme) private var scheme
     @State private var adding = false
     @State private var draft = ""
@@ -44,13 +45,11 @@ struct MainView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 520)
-                hairline
-                startupSection
+                .frame(maxHeight: max(PanelMetrics.minimumScrollHeight, availableHeight - PanelMetrics.footerAllowance))
                 hairline
                 footer
             }
-            .frame(width: 360)
+            .frame(width: PanelMetrics.width)
             .fixedSize(horizontal: true, vertical: true)
         }
         .background(palette.background)
@@ -76,20 +75,32 @@ struct MainView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 0) {
-                appearanceButton(.system, "System")
-                appearanceButton(.light, "Light")
-                appearanceButton(.dark, "Dark")
+        VStack(spacing: 8) {
+            startupSection
+            HStack(spacing: 8) {
+                Picker("Appearance", selection: Binding(
+                    get: { model.store.appearance },
+                    set: { model.setAppearance($0) }
+                )) {
+                    Text("System").tag(PanelAppearance.system)
+                    Text("Light").tag(PanelAppearance.light)
+                    Text("Dark").tag(PanelAppearance.dark)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .tint(palette.ink)
+                .frame(maxWidth: 210)
+                Spacer(minLength: 8)
+                Button("Quit") { NSApp.terminate(nil) }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .keyboardShortcut("q")
             }
-            Spacer(minLength: 8)
-            Button("Quit") { NSApp.terminate(nil) }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(palette.ink)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .font(.system(size: 11))
+        .foregroundStyle(palette.secondary)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
+        .padding(.vertical, 10)
     }
 
     private var startupSection: some View {
@@ -99,6 +110,7 @@ struct MainView: View {
                 set: { model.loginItem.setEnabled($0) }
             ))
             .toggleStyle(.checkbox)
+            .tint(palette.ink)
             .disabled(!model.loginItem.canConfigure)
             if !model.loginItem.canConfigure {
                 Text("Install in Applications to enable startup.")
@@ -107,31 +119,18 @@ struct MainView: View {
             if model.loginItem.needsApproval {
                 Text("Allow Codex Quota in Login Items to finish setup.")
                     .foregroundStyle(palette.secondary)
-                plainButton("Open Login Items") { model.loginItem.openSettings() }
+                actionButton("Open Login Items", icon: "gearshape") { model.loginItem.openSettings() }
             }
             if let error = model.loginItem.error {
                 Text(error)
                     .foregroundStyle(palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                plainButton("Open Login Items") { model.loginItem.openSettings() }
+                actionButton("Open Login Items", icon: "gearshape") { model.loginItem.openSettings() }
             }
         }
         .font(.system(size: 11))
         .foregroundStyle(palette.ink)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    private func appearanceButton(_ choice: PanelAppearance, _ title: String) -> some View {
-        let selected = model.store.appearance == choice
-        return Button(title) { model.setAppearance(choice) }
-            .buttonStyle(.plain)
-            .font(.system(size: 11, weight: selected ? .semibold : .regular))
-            .foregroundStyle(selected ? palette.ink : palette.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .overlay(Rectangle().stroke(selected ? palette.hairline : Color.clear, lineWidth: 1))
     }
 
     private var emptyState: some View {
@@ -145,7 +144,7 @@ struct MainView: View {
             if adding {
                 addForm
             } else {
-                plainButton("Add account") {
+                actionButton("Add account", icon: "plus") {
                     draft = model.suggestedLabel()
                     adding = true
                 }
@@ -198,36 +197,41 @@ struct MainView: View {
     private func header(_ account: AccountRecord, sample: UsageSample?) -> some View {
         let busy = model.isBusy(account.id)
         return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center, spacing: 8) {
                 Text(account.label)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(palette.ink)
                 Spacer(minLength: 8)
                 if busy {
+                    ProgressView()
+                        .controlSize(.small)
                     Text(model.phase[account.id] == .signingIn ? "Signing in" : "Checking")
                         .font(.system(size: 11))
                         .foregroundStyle(palette.secondary)
                 }
-                plainButton("Refresh", disabled: busy) {
+            }
+            HStack(spacing: 8) {
+                actionButton("Refresh", icon: "arrow.clockwise", disabled: busy) {
                     Task { await model.refresh(account.id) }
                 }
                 if model.authRequired.contains(account.id) || sample == nil {
-                    plainButton("Sign in", disabled: busy) {
+                    actionButton("Sign in", icon: "person.crop.circle.badge.plus", prominent: true, disabled: busy) {
                         Task { await model.signIn(account.id) }
                     }
                 } else {
-                    plainButton("Sign out", disabled: busy) {
+                    actionButton("Sign out", icon: "rectangle.portrait.and.arrow.right", disabled: busy) {
                         Task { await model.signOut(account.id) }
                     }
                 }
+                Spacer(minLength: 0)
             }
             Text(metaLine(account, sample: sample))
                 .font(.system(size: 11))
                 .foregroundStyle(palette.secondary)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
+        .padding(.vertical, 10)
     }
 
     private func metaLine(_ account: AccountRecord, sample: UsageSample?) -> String {
@@ -291,7 +295,7 @@ struct MainView: View {
 
     private func todaySection(sample: UsageSample?, pace: PaceReport?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 16) {
+            HStack(alignment: .top, spacing: 20) {
                 metricBlock(
                     "Today",
                     heroNumber(pace: pace, sample: sample),
@@ -315,15 +319,15 @@ struct MainView: View {
                     .foregroundStyle(palette.secondary)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
+        .padding(.vertical, 12)
     }
 
     private func metricBlock(_ title: String, _ value: String, _ caption: String, access: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             sectionTitle(title)
             Text(value)
-                .font(.system(size: 28, weight: .medium))
+                .font(.system(size: 32, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(palette.ink)
                 .accessibilityLabel(access ?? "\(title) \(value). \(caption)")
@@ -331,7 +335,7 @@ struct MainView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(palette.secondary)
                 .lineLimit(2)
-                .frame(width: 148, alignment: .leading)
+                .frame(maxWidth: 148, alignment: .leading)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(access ?? "\(title) \(value). \(caption)")
@@ -351,7 +355,8 @@ struct MainView: View {
                     .foregroundStyle(current ? palette.ink : palette.secondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
-                    .overlay(Rectangle().stroke(current ? palette.hairline : Color.clear, lineWidth: 1))
+                    .background(current ? palette.ink.opacity(0.1) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     .accessibilityLabel("\(LondonClock.dayLabel(slice.start)) \(slice.points.map { "\(Int($0.rounded())) percent of the week" } ?? "no reading")")
                 }
             }
@@ -378,13 +383,13 @@ struct MainView: View {
                 addForm
             } else {
                 HStack(spacing: 12) {
-                    plainButton("Add account") {
+                    actionButton("Add account", icon: "plus") {
                         draft = model.suggestedLabel()
                         adding = true
                         confirmingRemoval = false
                     }
                     if let account = model.selectedAccount {
-                        plainButton("Remove", disabled: model.isBusy(account.id)) { confirmingRemoval = true }
+                        actionButton("Remove", icon: "trash", destructive: true, disabled: model.isBusy(account.id)) { confirmingRemoval = true }
                     }
                 }
             }
@@ -394,11 +399,20 @@ struct MainView: View {
                     .foregroundStyle(palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 12) {
-                    plainButton("Remove from this Mac", disabled: model.isBusy(account.id)) {
+                    Button(role: .destructive) {
                         model.removeAccount(account.id)
                         confirmingRemoval = false
+                    } label: {
+                        Label("Remove from this Mac", systemImage: "trash")
                     }
-                    plainButton("Cancel") { confirmingRemoval = false }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .tint(palette.ink)
+                    .disabled(model.isBusy(account.id))
+                    Button("Cancel") { confirmingRemoval = false }
+                        .buttonStyle(.bordered)
+                        .controlSize(.regular)
+                        .keyboardShortcut(.cancelAction)
                 }
             }
         }
@@ -413,6 +427,9 @@ struct MainView: View {
             model.select(account.id)
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(selected ? palette.ink : palette.secondary)
                 Text(account.label)
                     .font(.system(size: 12, weight: selected ? .semibold : .regular))
                     .foregroundStyle(palette.ink)
@@ -426,9 +443,11 @@ struct MainView: View {
                     .monospacedDigit()
                     .foregroundStyle(palette.ink)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .overlay(Rectangle().stroke(selected ? palette.hairline : Color.clear, lineWidth: 1))
+            .padding(.horizontal, 8)
+            .frame(minHeight: PanelMetrics.controlHeight)
+            .contentShape(Rectangle())
+            .background(selected ? palette.ink.opacity(0.07) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: PanelMetrics.cornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -559,11 +578,17 @@ struct MainView: View {
                 .padding(.vertical, 4)
                 .overlay(Rectangle().stroke(palette.hairline, lineWidth: 1))
             HStack(spacing: 12) {
-                plainButton("Add") {
+                Button("Add") {
                     addDraftAccount()
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .tint(palette.ink)
                 .keyboardShortcut(.defaultAction)
-                plainButton("Cancel") { adding = false }
+                Button("Cancel") { adding = false }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .keyboardShortcut(.cancelAction)
             }
         }
     }
@@ -591,13 +616,38 @@ struct MainView: View {
             .padding(.vertical, 6)
     }
 
-    private func plainButton(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(palette.ink)
+    @ViewBuilder
+    private func actionButton(
+        _ title: String,
+        icon: String,
+        prominent: Bool = false,
+        destructive: Bool = false,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        if prominent {
+            actionButtonLabel(title, icon: icon, destructive: destructive, disabled: disabled, action: action)
+                .buttonStyle(.borderedProminent)
+                .tint(palette.ink)
+        } else {
+            actionButtonLabel(title, icon: icon, destructive: destructive, disabled: disabled, action: action)
+                .buttonStyle(.bordered)
+        }
+    }
+
+    private func actionButtonLabel(
+        _ title: String,
+        icon: String,
+        destructive: Bool,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: destructive ? .destructive : nil, action: action) {
+            Label(title, systemImage: icon)
+        }
+            .controlSize(.small)
+            .frame(minHeight: PanelMetrics.controlHeight)
             .disabled(disabled)
-            .opacity(disabled ? 0.4 : 1)
     }
 
     private func rowSubtitle(_ account: AccountRecord) -> String {

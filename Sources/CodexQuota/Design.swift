@@ -26,6 +26,15 @@ struct Palette {
     }
 }
 
+enum PanelMetrics {
+    static let width: CGFloat = 360
+    static let horizontalPadding: CGFloat = 14
+    static let controlHeight: CGFloat = 28
+    static let minimumScrollHeight: CGFloat = 160
+    static let footerAllowance: CGFloat = 142
+    static let cornerRadius: CGFloat = 6
+}
+
 func planLabel(_ value: String?) -> String {
     guard let value, !value.isEmpty else { return "Codex" }
     return value.split(separator: "_").map { word in
