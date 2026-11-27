@@ -43,6 +43,8 @@ public struct UsageSample: Codable, Equatable, Sendable {
     public var longestRunningTurnSec: Int64? = nil
     public var currentStreakDays: Int64? = nil
     public var longestStreakDays: Int64? = nil
+    public var optionalStatisticsSampledAt: Date? = nil
+    public var optionalStatisticsArePartial: Bool? = nil
 
     public init(
         accountId: String,
@@ -62,7 +64,9 @@ public struct UsageSample: Codable, Equatable, Sendable {
         dailyBuckets: [DailyBucket],
         longestRunningTurnSec: Int64? = nil,
         currentStreakDays: Int64? = nil,
-        longestStreakDays: Int64? = nil
+        longestStreakDays: Int64? = nil,
+        optionalStatisticsSampledAt: Date? = nil,
+        optionalStatisticsArePartial: Bool? = nil
     ) {
         self.accountId = accountId
         self.sampledAt = sampledAt
@@ -82,6 +86,8 @@ public struct UsageSample: Codable, Equatable, Sendable {
         self.longestRunningTurnSec = longestRunningTurnSec
         self.currentStreakDays = currentStreakDays
         self.longestStreakDays = longestStreakDays
+        self.optionalStatisticsSampledAt = optionalStatisticsSampledAt
+        self.optionalStatisticsArePartial = optionalStatisticsArePartial
     }
 
     public static func make(
@@ -102,7 +108,9 @@ public struct UsageSample: Codable, Equatable, Sendable {
         dailyBuckets: [DailyBucket] = [],
         longestRunningTurnSec: Int64? = nil,
         currentStreakDays: Int64? = nil,
-        longestStreakDays: Int64? = nil
+        longestStreakDays: Int64? = nil,
+        optionalStatisticsSampledAt: Date? = nil,
+        optionalStatisticsArePartial: Bool? = nil
     ) -> UsageSample {
         UsageSample(
             accountId: accountId,
@@ -122,8 +130,53 @@ public struct UsageSample: Codable, Equatable, Sendable {
             dailyBuckets: dailyBuckets,
             longestRunningTurnSec: longestRunningTurnSec,
             currentStreakDays: currentStreakDays,
-            longestStreakDays: longestStreakDays
+            longestStreakDays: longestStreakDays,
+            optionalStatisticsSampledAt: optionalStatisticsSampledAt,
+            optionalStatisticsArePartial: optionalStatisticsArePartial
         )
+    }
+
+    public static func merging(
+        accountId: String,
+        sampledAt: Date,
+        reading: UsageReading,
+        previous: UsageSample?
+    ) -> UsageSample? {
+        guard let identity = reading.identity else { return nil }
+        let retained = reading.optionalUsageSucceeded ? nil : previous
+        let retainedStatisticsTime = retained?.optionalStatisticsSampledAt
+            ?? (retained?.hasOptionalStatistics == true ? retained?.sampledAt : nil)
+        return UsageSample(
+            accountId: accountId,
+            sampledAt: sampledAt,
+            email: identity.email,
+            planType: reading.weekly?.planType ?? identity.planType,
+            limitId: reading.weekly?.limitId,
+            limitName: reading.weekly?.limitName,
+            usedPercent: reading.weekly?.usedPercent,
+            windowDurationMins: reading.weekly?.windowDurationMins,
+            resetsAt: reading.weekly?.resetsAt,
+            reached: reading.weekly?.reached,
+            lifetimeTokens: retained?.lifetimeTokens ?? reading.lifetimeTokens,
+            peakDailyTokens: retained?.peakDailyTokens ?? reading.peakDailyTokens,
+            shortUsedPercent: reading.shortWindow?.usedPercent,
+            shortDurationMins: reading.shortWindow?.windowDurationMins,
+            dailyBuckets: retained?.dailyBuckets ?? reading.dailyBuckets,
+            longestRunningTurnSec: retained?.longestRunningTurnSec ?? reading.longestRunningTurnSec,
+            currentStreakDays: retained?.currentStreakDays ?? reading.currentStreakDays,
+            longestStreakDays: retained?.longestStreakDays ?? reading.longestStreakDays,
+            optionalStatisticsSampledAt: reading.optionalUsageSucceeded ? sampledAt : retainedStatisticsTime,
+            optionalStatisticsArePartial: !reading.optionalUsageSucceeded
+        )
+    }
+
+    public var hasOptionalStatistics: Bool {
+        lifetimeTokens != nil
+            || peakDailyTokens != nil
+            || !dailyBuckets.isEmpty
+            || longestRunningTurnSec != nil
+            || currentStreakDays != nil
+            || longestStreakDays != nil
     }
 }
 
@@ -221,6 +274,7 @@ public struct UsageReading: Equatable, Sendable {
     public var longestRunningTurnSec: Int64? = nil
     public var currentStreakDays: Int64? = nil
     public var longestStreakDays: Int64? = nil
+    public var optionalUsageSucceeded: Bool = true
 }
 
 public struct WeekStat: Equatable, Identifiable, Sendable {

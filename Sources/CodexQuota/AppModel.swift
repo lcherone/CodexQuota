@@ -234,7 +234,13 @@ final class AppModel {
     }
 
     private func apply(_ reading: UsageReading, to id: String) {
-        guard let sample = sample(id: id, reading: reading) else {
+        let sampledAt = Date()
+        guard let sample = UsageSample.merging(
+            accountId: id,
+            sampledAt: sampledAt,
+            reading: reading,
+            previous: latestSample(for: id)
+        ) else {
             authRequired.insert(id)
             banners[id] = "Sign in with ChatGPT to read this account."
             return
@@ -243,7 +249,9 @@ final class AppModel {
         var copy = store
         history.record(sample, into: &copy, now: sample.sampledAt)
         store = copy
-        if reading.weekly == nil {
+        if !reading.optionalUsageSucceeded {
+            banners[id] = nil
+        } else if reading.weekly == nil {
             banners[id] = "This account didn't include a 7-day allowance."
         } else if reading.weekly?.resetsAt == nil {
             banners[id] = "The reset time wasn't included, so today's slice is hidden."
@@ -251,30 +259,6 @@ final class AppModel {
             banners[id] = nil
         }
         persist()
-    }
-
-    private func sample(id: String, reading: UsageReading) -> UsageSample? {
-        guard let identity = reading.identity else { return nil }
-        return UsageSample(
-            accountId: id,
-            sampledAt: Date(),
-            email: identity.email,
-            planType: reading.weekly?.planType ?? identity.planType,
-            limitId: reading.weekly?.limitId,
-            limitName: reading.weekly?.limitName,
-            usedPercent: reading.weekly?.usedPercent,
-            windowDurationMins: reading.weekly?.windowDurationMins,
-            resetsAt: reading.weekly?.resetsAt,
-            reached: reading.weekly?.reached,
-            lifetimeTokens: reading.lifetimeTokens,
-            peakDailyTokens: reading.peakDailyTokens,
-            shortUsedPercent: reading.shortWindow?.usedPercent,
-            shortDurationMins: reading.shortWindow?.windowDurationMins,
-            dailyBuckets: reading.dailyBuckets,
-            longestRunningTurnSec: reading.longestRunningTurnSec,
-            currentStreakDays: reading.currentStreakDays,
-            longestStreakDays: reading.longestStreakDays
-        )
     }
 
     private func persist() {

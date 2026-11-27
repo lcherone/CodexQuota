@@ -70,8 +70,14 @@ public struct QuotaService: Sendable {
 
     private func readQuota(_ session: CodexSession, account: JSONValue) async throws -> UsageReading {
         let limits = try await session.request(method: "account/rateLimits/read", params: QuotaCalls.empty, timeout: QuotaTiming.rpcTimeout)
-        let usage = try? await session.request(method: "account/usage/read", params: QuotaCalls.empty, timeout: QuotaTiming.rpcTimeout)
-        return UsageParsing.reading(account: account, limits: limits, usage: usage ?? .object([:]))
+        do {
+            let usage = try await session.request(method: "account/usage/read", params: QuotaCalls.empty, timeout: QuotaTiming.rpcTimeout)
+            return UsageParsing.reading(account: account, limits: limits, usage: usage)
+        } catch {
+            var reading = UsageParsing.reading(account: account, limits: limits, usage: .object([:]))
+            reading.optionalUsageSucceeded = false
+            return reading
+        }
     }
 
     private func withSession<T: Sendable>(home: String, body: (CodexSession) async throws -> T) async throws -> T {

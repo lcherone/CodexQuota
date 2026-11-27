@@ -92,7 +92,10 @@ for raw in sys.stdin:
     elif method == "account/rateLimits/read":
         send({"id": request_id, "result": LIMITS})
     elif method == "account/usage/read":
-        send({"id": request_id, "result": USAGE})
+        if MODE == "usage-failure":
+            send({"id": request_id, "error": {"code": -32000, "message": "usage unavailable"}})
+        else:
+            send({"id": request_id, "result": USAGE})
     elif method == "account/logout":
         login_started = False
         send({"id": request_id, "result": {}})

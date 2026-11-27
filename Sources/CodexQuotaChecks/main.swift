@@ -348,6 +348,7 @@ enum PacingChecks {
 enum UsageChecks {
     static func run() {
         summaryStatsAndLegacySamples()
+        partialUsageMergesAndRecovers()
         weeklyWindowIgnoresTheFiveHourWindow()
         codexBucketWinsOverAnotherWeeklyWindow()
         millisecondResetAndClampedPercent()
@@ -372,6 +373,8 @@ enum UsageChecks {
             let oldSample = Data(#"{"accountId":"legacy","sampledAt":0,"dailyBuckets":[]}"#.utf8)
             let decoded = try JSONDecoder().decode(UsageSample.self, from: oldSample)
             Check.isNil(decoded.currentStreakDays)
+            Check.isNil(decoded.optionalStatisticsSampledAt)
+            Check.isNil(decoded.optionalStatisticsArePartial)
             var sample = decoded
             sample.currentStreakDays = reading.currentStreakDays
             sample.longestStreakDays = reading.longestStreakDays
@@ -381,6 +384,87 @@ enum UsageChecks {
         } catch {
             Check.fail("summary stats or legacy sample failed: \(error)")
         }
+    }
+
+    static func partialUsageMergesAndRecovers() {
+        let firstTime = Date(timeIntervalSince1970: 1_800_000_000)
+        let partialTime = firstTime.addingTimeInterval(300)
+        let recoveredTime = partialTime.addingTimeInterval(300)
+        let oldBuckets = [DailyBucket(startDate: "2026-11-24", tokens: 700)]
+        let previous = UsageSample.make(
+            sampledAt: firstTime,
+            usedPercent: 10,
+            lifetimeTokens: 123_456,
+            peakDailyTokens: 999,
+            shortUsedPercent: 25,
+            shortDurationMins: 300,
+            dailyBuckets: oldBuckets,
+            longestRunningTurnSec: 7_322,
+            currentStreakDays: 4,
+            longestStreakDays: 19,
+            optionalStatisticsSampledAt: firstTime,
+            optionalStatisticsArePartial: false
+        )
+        var failed = UsageReading(
+            identity: AccountIdentity(type: "chatgpt", email: "new@example.com", planType: "plus"),
+            weekly: WeeklyWindow(limitId: "codex", limitName: "Codex", planType: "plus", usedPercent: 20, windowDurationMins: 10_080, resetsAt: recoveredTime, reached: nil),
+            shortWindow: ShortWindow(usedPercent: 30, windowDurationMins: 300, resetsAt: recoveredTime),
+            lifetimeTokens: nil,
+            peakDailyTokens: nil,
+            dailyBuckets: []
+        )
+        failed.optionalUsageSucceeded = false
+        let partial = UsageSample.merging(accountId: "account", sampledAt: partialTime, reading: failed, previous: previous)
+        Check.close(partial?.usedPercent, 20, accuracy: 0.001)
+        Check.close(partial?.shortUsedPercent, 30, accuracy: 0.001)
+        Check.equal(partial?.lifetimeTokens, Int64(123_456))
+        Check.equal(partial?.peakDailyTokens, Int64(999))
+        Check.equal(partial?.dailyBuckets, oldBuckets)
+        Check.equal(partial?.longestRunningTurnSec, Int64(7_322))
+        Check.equal(partial?.currentStreakDays, Int64(4))
+        Check.equal(partial?.longestStreakDays, Int64(19))
+        Check.equal(partial?.optionalStatisticsSampledAt, firstTime)
+        Check.equal(partial?.optionalStatisticsArePartial, true)
+        do {
+            let reloaded = try JSONDecoder().decode(UsageSample.self, from: JSONEncoder().encode(partial))
+            Check.equal(reloaded.optionalStatisticsSampledAt, firstTime)
+            Check.equal(reloaded.optionalStatisticsArePartial, true)
+        } catch {
+            Check.fail("partial sample persistence failed: \(error)")
+        }
+
+        let noPrior = UsageSample.merging(accountId: "account", sampledAt: partialTime, reading: failed, previous: nil)
+        Check.isNil(noPrior?.lifetimeTokens)
+        Check.equal(noPrior?.dailyBuckets, [])
+        Check.isNil(noPrior?.optionalStatisticsSampledAt)
+        Check.equal(noPrior?.optionalStatisticsArePartial, true)
+
+        var recovered = failed
+        recovered.lifetimeTokens = 222_222
+        recovered.peakDailyTokens = 1_111
+        recovered.dailyBuckets = [DailyBucket(startDate: "2026-11-25", tokens: 800)]
+        recovered.longestRunningTurnSec = 8_000
+        recovered.currentStreakDays = 5
+        recovered.longestStreakDays = 20
+        recovered.optionalUsageSucceeded = true
+        let complete = UsageSample.merging(accountId: "account", sampledAt: recoveredTime, reading: recovered, previous: partial)
+        Check.equal(complete?.lifetimeTokens, Int64(222_222))
+        Check.equal(complete?.dailyBuckets, recovered.dailyBuckets)
+        Check.equal(complete?.optionalStatisticsSampledAt, recoveredTime)
+        Check.equal(complete?.optionalStatisticsArePartial, false)
+
+        var successfulEmpty = recovered
+        successfulEmpty.lifetimeTokens = nil
+        successfulEmpty.peakDailyTokens = nil
+        successfulEmpty.dailyBuckets = []
+        successfulEmpty.longestRunningTurnSec = nil
+        successfulEmpty.currentStreakDays = nil
+        successfulEmpty.longestStreakDays = nil
+        let empty = UsageSample.merging(accountId: "account", sampledAt: recoveredTime, reading: successfulEmpty, previous: partial)
+        Check.isNil(empty?.lifetimeTokens)
+        Check.equal(empty?.dailyBuckets, [])
+        Check.equal(empty?.optionalStatisticsSampledAt, recoveredTime)
+        Check.equal(empty?.optionalStatisticsArePartial, false)
     }
 
     static func weeklyWindowIgnoresTheFiveHourWindow() {
@@ -652,7 +736,23 @@ enum HistoryChecks {
 enum SessionChecks {
     static func run() async {
         await refreshReadsTheMockAppServer()
+        await optionalUsageFailureStillReturnsQuota()
         await signInOpensTheReturnedLinkAndDoesNotFetchIt()
+    }
+
+    static func optionalUsageFailureStillReturnsQuota() async {
+        let service = QuotaService(launch: { launch() }, extraEnvironment: ["CODEX_QUOTA_MOCK": "usage-failure"])
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true).path
+        do {
+            let reading = try await service.refresh(home: home)
+            Check.close(reading.weekly?.usedPercent, 10, accuracy: 0.001)
+            Check.close(reading.shortWindow?.usedPercent, 25, accuracy: 0.001)
+            Check.equal(reading.optionalUsageSucceeded, false)
+            Check.isNil(reading.lifetimeTokens)
+            Check.equal(reading.dailyBuckets, [])
+        } catch {
+            Check.fail("partial refresh failed \(error)")
+        }
     }
 
     static func refreshReadsTheMockAppServer() async {

@@ -164,6 +164,9 @@ struct MainView: View {
             if let message = model.banners[account.id] {
                 noteLine(message)
             }
+            if sample?.optionalStatisticsArePartial == true {
+                noteLine(partialStatisticsNotice(sample))
+            }
             if case let .failed(message) = model.phase[account.id] {
                 noteLine(message)
             }
@@ -246,6 +249,13 @@ struct MainView: View {
             parts.append("No reading yet")
         }
         return parts.joined(separator: " · ")
+    }
+
+    private func partialStatisticsNotice(_ sample: UsageSample?) -> String {
+        if let checkedAt = sample?.optionalStatisticsSampledAt {
+            return "Quota refreshed. Usage stats are from an older check (\(LondonClock.checkedLine(checkedAt))). Refresh to retry."
+        }
+        return "Quota refreshed, but usage stats are unavailable because that check failed. Refresh to retry."
     }
 
     private func waiting(_ account: AccountRecord) -> some View {
@@ -482,6 +492,11 @@ struct MainView: View {
             }
             sectionTitle("Usage stats")
                 .padding(.top, 8)
+            if let checkedAt = sample?.optionalStatisticsSampledAt {
+                Text(LondonClock.checkedLine(checkedAt).replacingOccurrences(of: "Checked", with: "Statistics checked"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.secondary)
+            }
             LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 10) {
                 tokenCell("Lifetime tokens", totals.lifetimeTokens)
                 tokenCell("Peak day tokens", totals.peakDailyTokens)
