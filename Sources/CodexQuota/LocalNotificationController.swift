@@ -17,7 +17,7 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
 
     public func refreshPermission() async {
         permission = await withCheckedContinuation { continuation in
-            center.getNotificationSettings { settings in
+            center.getNotificationSettings { @Sendable settings in
                 continuation.resume(returning: Self.permission(for: settings.authorizationStatus))
             }
         }
@@ -26,7 +26,7 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
     public func requestPermission() async -> Bool {
         do {
             let granted = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
-                center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+                center.requestAuthorization(options: [.alert, .sound]) { @Sendable granted, error in
                     if let error {
                         continuation.resume(throwing: error)
                     } else {
@@ -64,7 +64,7 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         do {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                center.add(request) { error in
+                center.add(request) { @Sendable error in
                     if let error {
                         continuation.resume(throwing: error)
                     } else {
