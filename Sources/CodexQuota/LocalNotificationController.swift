@@ -25,7 +25,15 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
 
     public func requestPermission() async -> Bool {
         do {
-            let granted = try await center.requestAuthorization(options: [.alert, .sound])
+            let granted = try await withCheckedThrowingContinuation { continuation in
+                center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: granted)
+                    }
+                }
+            }
             await refreshPermission()
             return granted && permission == .authorized
         } catch {
@@ -55,7 +63,15 @@ final class LocalNotificationController: NSObject, LocalNotificationControlling,
         content.sound = .default
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         do {
-            try await center.add(request)
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                center.add(request) { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
             return true
         } catch {
             await refreshPermission()
