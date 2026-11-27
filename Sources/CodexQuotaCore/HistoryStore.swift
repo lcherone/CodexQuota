@@ -1,19 +1,37 @@
 import Foundation
 
+private struct StoredLibraryVersion: Decodable {
+    var version: Int
+}
+
+public enum LibraryAccess: Equatable, Sendable {
+    case writable
+    case writableAfterQuarantine(URL)
+    case blocked(String)
+
+    public var isWritable: Bool {
+        if case .blocked = self { return false }
+        return true
+    }
+}
+
 public struct LibraryLoad: Equatable, Sendable {
     public var store: StoreFile
-    public var replacedCorruptFile: URL?
+    public var access: LibraryAccess
 }
 
 public struct HistoryStore: Sendable {
     public var directory: URL
+    private let moveItem: @Sendable (URL, URL) throws -> Void
     private let removeItem: @Sendable (URL) throws -> Void
 
     public init(
         directory: URL,
+        moveItem: @escaping @Sendable (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) },
         removeItem: @escaping @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
     ) {
         self.directory = directory
+        self.moveItem = moveItem
         self.removeItem = removeItem
     }
 
@@ -32,25 +50,43 @@ public struct HistoryStore: Sendable {
     public func load(now: Date = Date()) throws -> LibraryLoad {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: fileURL.path) else {
-            return LibraryLoad(store: .empty(), replacedCorruptFile: nil)
+            return LibraryLoad(store: .empty(), access: .writable)
         }
-        let data = try Data(contentsOf: fileURL)
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            return blockedLoad(
+                "Codex Quota couldn't safely read the library, so it was left unchanged at \(fileURL.path). Resolve the file problem or move it yourself, then relaunch Codex Quota."
+            )
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
-            let store = try decoder.decode(StoreFile.self, from: data)
-            guard store.version == StoreFile.currentVersion else {
-                throw QuotaFailure.library("This Mac has a Codex Quota library from another version.")
+            let storedVersion = try decoder.decode(StoredLibraryVersion.self, from: data)
+            guard storedVersion.version == StoreFile.currentVersion else {
+                return blockedLoad(
+                    "This library uses an unsupported version. Codex Quota left it unchanged at \(fileURL.path). Move it or install a compatible version, then relaunch Codex Quota."
+                )
             }
-            return LibraryLoad(store: pruned(store, now: now), replacedCorruptFile: nil)
-        } catch let failure as QuotaFailure {
-            throw failure
+            let store = try decoder.decode(StoreFile.self, from: data)
+            return LibraryLoad(store: pruned(store, now: now), access: .writable)
         } catch {
             let stamp = ISO8601DateFormatter().string(from: now).replacingOccurrences(of: ":", with: "-")
             let kept = directory.appendingPathComponent("store.json.unreadable-\(stamp)")
-            try? fileManager.moveItem(at: fileURL, to: kept)
-            return LibraryLoad(store: .empty(), replacedCorruptFile: kept)
+            do {
+                try moveItem(fileURL, kept)
+                return LibraryLoad(store: .empty(), access: .writableAfterQuarantine(kept))
+            } catch {
+                return blockedLoad(
+                    "Codex Quota couldn't safely preserve and replace the unreadable library, so it was left unchanged at \(fileURL.path). Resolve the file problem or move it yourself, then relaunch Codex Quota."
+                )
+            }
         }
+    }
+
+    private func blockedLoad(_ message: String) -> LibraryLoad {
+        LibraryLoad(store: .empty(), access: .blocked(message))
     }
 
     public func save(_ store: StoreFile) throws {

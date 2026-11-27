@@ -90,6 +90,7 @@ struct MainView: View {
                 .labelsHidden()
                 .tint(palette.ink)
                 .frame(maxWidth: 210)
+                .disabled(!model.libraryReady)
                 Spacer(minLength: 8)
                 Button("Quit") { NSApp.terminate(nil) }
                     .buttonStyle(.borderless)
@@ -144,7 +145,7 @@ struct MainView: View {
             if adding {
                 addForm
             } else {
-                actionButton("Add account", icon: "plus") {
+                actionButton("Add account", icon: "plus", disabled: !model.libraryReady) {
                     draft = model.suggestedLabel()
                     adding = true
                 }
@@ -214,15 +215,15 @@ struct MainView: View {
                 }
             }
             HStack(spacing: 8) {
-                actionButton("Refresh", icon: "arrow.clockwise", disabled: busy) {
+                actionButton("Refresh", icon: "arrow.clockwise", disabled: busy || !model.libraryReady) {
                     Task { await model.refresh(account.id) }
                 }
                 if model.authRequired.contains(account.id) || sample == nil {
-                    actionButton("Sign in", icon: "person.crop.circle.badge.plus", prominent: true, disabled: busy) {
+                    actionButton("Sign in", icon: "person.crop.circle.badge.plus", prominent: true, disabled: busy || !model.libraryReady) {
                         Task { await model.signIn(account.id) }
                     }
                 } else {
-                    actionButton("Sign out", icon: "rectangle.portrait.and.arrow.right", disabled: busy) {
+                    actionButton("Sign out", icon: "rectangle.portrait.and.arrow.right", disabled: busy || !model.libraryReady) {
                         Task { await model.signOut(account.id) }
                     }
                 }
@@ -393,13 +394,13 @@ struct MainView: View {
                 addForm
             } else {
                 HStack(spacing: 12) {
-                    actionButton("Add account", icon: "plus") {
+                    actionButton("Add account", icon: "plus", disabled: !model.libraryReady) {
                         draft = model.suggestedLabel()
                         adding = true
                         confirmingRemoval = false
                     }
                     if let account = model.selectedAccount {
-                        actionButton("Remove", icon: "trash", destructive: true, disabled: model.isBusy(account.id)) { confirmingRemoval = true }
+                        actionButton("Remove", icon: "trash", destructive: true, disabled: model.isBusy(account.id) || !model.libraryReady) { confirmingRemoval = true }
                     }
                 }
             }
@@ -418,7 +419,7 @@ struct MainView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
                     .tint(palette.ink)
-                    .disabled(model.isBusy(account.id))
+                    .disabled(model.isBusy(account.id) || !model.libraryReady)
                     Button("Cancel") { confirmingRemoval = false }
                         .buttonStyle(.bordered)
                         .controlSize(.regular)
@@ -460,6 +461,7 @@ struct MainView: View {
             .clipShape(RoundedRectangle(cornerRadius: PanelMetrics.cornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(!model.libraryReady)
     }
 
     private func historySection(_ totals: UsageTotals, weeks: [WeekStat], sample: UsageSample?) -> some View {
@@ -592,6 +594,7 @@ struct MainView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
                 .overlay(Rectangle().stroke(palette.hairline, lineWidth: 1))
+                .disabled(!model.libraryReady)
             HStack(spacing: 12) {
                 Button("Add") {
                     addDraftAccount()
@@ -600,6 +603,7 @@ struct MainView: View {
                 .controlSize(.regular)
                 .tint(palette.ink)
                 .keyboardShortcut(.defaultAction)
+                .disabled(!model.libraryReady)
                 Button("Cancel") { adding = false }
                     .buttonStyle(.bordered)
                     .controlSize(.regular)

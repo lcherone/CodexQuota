@@ -141,7 +141,9 @@ The menu shows `49%`. If those 7 points were 22 instead (40% at the slice start,
 
 `~/Library/Application Support/CodexQuota/store.json`, mode `0600`. The directory is mode `0700`. Writes are atomic. `CODEX_QUOTA_DIR` overrides the directory for a local smoke launch. The override is how the build check avoids touching a real library.
 
-Version is `1`. A newer or older version stays unreadable and the app says so. A file that is not JSON is moved to `store.json.unreadable-<time>` and the app starts empty.
+Version is `1`. A newer or older version is left byte-for-byte unchanged and blocks all library-backed actions. The panel shows the library location and asks the user to move it or install a compatible app version, then relaunch.
+
+A file that is not JSON is moved to `store.json.unreadable-<time>` before the app starts with a writable empty library. The panel reports where the original was kept. If that move fails, the source stays byte-for-byte unchanged, all library-backed actions remain unavailable, and the panel explains that Codex Quota could not safely preserve and replace the library. Recovery is to resolve or move the file at the displayed location and relaunch. Launch-at-login settings and Quit remain available because they do not write the library.
 
 ```json
 {
@@ -202,8 +204,8 @@ The panel footer offers System, Light, and Dark. System follows the Mac appearan
 | Short window | One line, such as "Five-hour window 25% used." |
 | Refreshing | The toolbar shows progress. Buttons wait. |
 | Error | One calm sentence: missing CLI, timeout, app server stopped, unreadable response, or a refused method. The last good reading stays. |
+| Library problem | An unsupported library or unreadable library that could not be moved stays unchanged. Account, authentication, refresh, removal, and appearance controls are unavailable until the file at the displayed location is resolved or moved and Codex Quota is relaunched. A successfully quarantined unreadable library instead starts writable and reports the preserved filename. |
 | Stale | After 15 minutes: "This reading is getting old." |
-| Library problem | The previous file was kept, or this version cannot read it. |
 
 The weeks section is lifetime tokens, peak day, recorded tokens, average week, and up to eight week rows. Removing an account confirms first, and only deletes a home the app created.
 

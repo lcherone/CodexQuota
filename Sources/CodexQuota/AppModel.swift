@@ -14,6 +14,7 @@ final class AppModel {
     private(set) var banners: [String: String] = [:]
     private(set) var authRequired: Set<String> = []
     private(set) var libraryNote: String?
+    private(set) var libraryReady = false
     private let history: HistoryStore
     private let service: QuotaService
     private var loop: Task<Void, Never>?
@@ -26,15 +27,21 @@ final class AppModel {
         do {
             let loaded = try history.load()
             store = loaded.store
-            if let kept = loaded.replacedCorruptFile {
-                libraryNote = "The previous library couldn't be read. It was kept as \(kept.lastPathComponent)."
+            switch loaded.access {
+            case .writable:
+                libraryReady = true
+            case let .writableAfterQuarantine(kept):
+                libraryReady = true
+                libraryNote = "The previous library couldn't be read. It was kept at \(kept.path)."
+            case let .blocked(message):
+                libraryNote = message
             }
         } catch let error as QuotaFailure {
             store = .empty()
-            libraryNote = error.message
+            libraryNote = "\(error.message) The library was left at \(history.fileURL.path). Resolve or move it, then relaunch Codex Quota."
         } catch {
             store = .empty()
-            libraryNote = "The library on this Mac couldn't be opened."
+            libraryNote = "The library couldn't be safely opened, so it was left at \(history.fileURL.path). Resolve or move it, then relaunch Codex Quota."
         }
     }
 
@@ -58,6 +65,7 @@ final class AppModel {
     }
 
     func start() {
+        guard libraryReady else { return }
         guard loop == nil else { return }
         loop = Task { [weak self] in
             await self?.refreshAll()
@@ -69,6 +77,7 @@ final class AppModel {
     }
 
     func select(_ id: String) {
+        guard libraryReady else { return }
         var copy = store
         copy.selectedAccountId = id
         store = copy
@@ -76,6 +85,7 @@ final class AppModel {
     }
 
     func setAppearance(_ appearance: PanelAppearance) {
+        guard libraryReady else { return }
         guard store.appearance != appearance else { return }
         var copy = store
         copy.appearance = appearance
@@ -84,6 +94,7 @@ final class AppModel {
     }
 
     func addAccount(label: String) {
+        guard libraryReady else { return }
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = String((trimmed.isEmpty ? suggestedLabel() : trimmed).prefix(40))
         let id = UUID().uuidString.lowercased()
@@ -103,6 +114,7 @@ final class AppModel {
     }
 
     func removeAccount(_ id: String) {
+        guard libraryReady else { return }
         guard !isBusy(id) else { return }
         guard let account = store.accounts.first(where: { $0.id == id }) else { return }
         do {
@@ -131,6 +143,7 @@ final class AppModel {
     }
 
     func refreshAll() async {
+        guard libraryReady else { return }
         if refreshRunning {
             refreshAgain = true
             return
@@ -151,6 +164,7 @@ final class AppModel {
     }
 
     func refresh(_ id: String) async {
+        guard libraryReady else { return }
         guard let account = store.accounts.first(where: { $0.id == id }) else { return }
         if phase[id] == .refreshing || phase[id] == .signingIn { return }
         phase[id] = .refreshing
@@ -167,6 +181,7 @@ final class AppModel {
     }
 
     func signIn(_ id: String) async {
+        guard libraryReady else { return }
         guard let account = store.accounts.first(where: { $0.id == id }) else { return }
         if phase[id] == .refreshing || phase[id] == .signingIn { return }
         phase[id] = .signingIn
@@ -192,6 +207,7 @@ final class AppModel {
     }
 
     func signOut(_ id: String) async {
+        guard libraryReady else { return }
         guard let account = store.accounts.first(where: { $0.id == id }) else { return }
         phase[id] = .refreshing
         do {
@@ -234,6 +250,7 @@ final class AppModel {
     }
 
     private func apply(_ reading: UsageReading, to id: String) {
+        guard libraryReady else { return }
         let sampledAt = Date()
         guard let sample = UsageSample.merging(
             accountId: id,
@@ -262,6 +279,7 @@ final class AppModel {
     }
 
     private func persist() {
+        guard libraryReady else { return }
         do {
             try history.save(store)
         } catch {

@@ -590,6 +590,8 @@ enum HistoryChecks {
     static func run() {
         roundTripPermissionsAndCoalescing()
         corruptLibraryIsKeptBesideAnEmptyOne()
+        unsupportedLibraryIsBlockedAndUnchanged()
+        failedQuarantineIsBlockedAndUnchanged()
         oldSamplesAreDropped()
         failedHomeRemovalPreservesAccountStateForRetry()
         removingHomesStaysInsideTheOwnedDirectory()
@@ -631,12 +633,50 @@ enum HistoryChecks {
             try Data("not json".utf8).write(to: history.fileURL)
             let loaded = try history.load()
             Check.equal(loaded.store, .empty())
-            Check.notNil(loaded.replacedCorruptFile)
-            if let kept = loaded.replacedCorruptFile {
+            if case let .writableAfterQuarantine(kept) = loaded.access {
                 Check.ok(FileManager.default.fileExists(atPath: kept.path))
+                let original = try Data(contentsOf: kept)
+                try history.save(.empty())
+                Check.equal(try Data(contentsOf: kept), original)
+                Check.ok(FileManager.default.fileExists(atPath: history.fileURL.path))
+            } else {
+                Check.fail("corrupt library was not quarantined")
             }
         } catch {
             Check.fail("corrupt library failed \(error)")
+        }
+    }
+
+    static func unsupportedLibraryIsBlockedAndUnchanged() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let original = Data("{\"version\":2,\"accounts\":[],\"samples\":[]}".utf8)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let history = HistoryStore(directory: directory)
+            try original.write(to: history.fileURL)
+            let loaded = try history.load()
+            Check.ok(!loaded.access.isWritable, "unsupported library was not blocked")
+            Check.equal(try Data(contentsOf: history.fileURL), original)
+        } catch {
+            Check.fail("unsupported library check failed \(error)")
+        }
+    }
+
+    static func failedQuarantineIsBlockedAndUnchanged() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let original = Data("not json".utf8)
+        let history = HistoryStore(directory: directory, moveItem: { _, _ in
+            throw CocoaError(.fileWriteNoPermission)
+        })
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try original.write(to: history.fileURL)
+            let loaded = try history.load()
+            Check.ok(!loaded.access.isWritable, "failed quarantine was not blocked")
+            Check.equal(try Data(contentsOf: history.fileURL), original)
+            Check.equal(try FileManager.default.contentsOfDirectory(atPath: directory.path), ["store.json"])
+        } catch {
+            Check.fail("failed quarantine check failed \(error)")
         }
     }
 
