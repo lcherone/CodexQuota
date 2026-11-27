@@ -199,14 +199,30 @@ enum AppModelWorkflowChecks {
         Check.equal(model.phase[first.id], .idle)
         Check.equal(state.signInStarts, 2)
 
+        model.select(second.id)
+        await model.signOut(second.id)
         let beforeRemoval = model.store
+        let beforeRemovalBanner = model.banners[second.id]
+        Check.equal(model.selectedAccount?.id, second.id)
+        Check.ok(model.authRequired.contains(second.id))
+        Check.notNil(beforeRemovalBanner)
         state.deletionFails = true
         model.removeAccount(second.id)
         Check.equal(model.store, beforeRemoval)
+        Check.equal(model.selectedAccount?.id, second.id)
+        Check.equal(
+            model.phase[second.id],
+            .failed("Couldn't remove Work because its Codex home couldn't be deleted. Check that the home is accessible, then try Remove again.")
+        )
+        Check.equal(model.banners[second.id], beforeRemovalBanner)
+        Check.ok(model.authRequired.contains(second.id))
         state.deletionFails = false
         model.removeAccount(second.id)
         Check.ok(!model.store.accounts.contains { $0.id == second.id })
         Check.equal(model.selectedAccount?.id, first.id)
+        Check.isNil(model.phase[second.id])
+        Check.isNil(model.banners[second.id])
+        Check.ok(!model.authRequired.contains(second.id))
     }
 
     private static func settle() async {
