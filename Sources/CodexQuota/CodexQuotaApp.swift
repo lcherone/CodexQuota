@@ -3,6 +3,10 @@ import CodexQuotaCore
 import CodexQuotaModel
 import SwiftUI
 
+extension Notification.Name {
+    static let quotaPanelEscape = Notification.Name("CodexQuota.panelEscape")
+}
+
 @main
 struct CodexQuotaApp {
     static func main() {
@@ -80,7 +84,9 @@ final class StatusController: NSObject {
 
     func install(model: AppModel) {
         self.model = model
-        let host = NSHostingView(rootView: MainView(model: model, availableHeight: availableHeight))
+        let host = NSHostingView(rootView: MainView(model: model, availableHeight: availableHeight, onDismiss: { [weak self] in
+            self?.hide()
+        }))
         host.sizingOptions = [.intrinsicContentSize]
         host.wantsLayer = true
         host.layer?.cornerRadius = 8
@@ -125,10 +131,12 @@ final class StatusController: NSObject {
     private func fit() {
         guard let host else { return }
         let screen = item.button?.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-        let maxHeight = max(240, (screen?.height ?? 640) - 24)
+        let maxHeight = min(PanelMetrics.maximumHeight, max(240, (screen?.height ?? 640) - 24))
         if availableHeight != maxHeight, let model {
             availableHeight = maxHeight
-            host.rootView = MainView(model: model, availableHeight: availableHeight)
+            host.rootView = MainView(model: model, availableHeight: availableHeight, onDismiss: { [weak self] in
+                self?.hide()
+            })
         }
         host.layoutSubtreeIfNeeded()
         var size = host.fittingSize
@@ -176,7 +184,7 @@ final class StatusController: NSObject {
             let consumed = MainActor.assumeIsolated { () -> Bool in
                 guard let self else { return false }
                 if escape, self.panel.isVisible {
-                    self.hide()
+                    NotificationCenter.default.post(name: .quotaPanelEscape, object: self.panel)
                     return true
                 }
                 if click {

@@ -23,7 +23,7 @@ That directory must be writable. The default user Applications folder avoids a p
 
 ## Launch at login
 
-Enable **Launch at login** in the installed app. The app uses [macOS Service Management](https://developer.apple.com/documentation/servicemanagement/smappservice) to register itself as a login item. The checkbox reads the actual system state rather than a saved app preference. If macOS requires approval, use **Open Login Items** in the panel and allow Codex Quota in System Settings.
+Open **Settings** from the installed app’s footer and enable **Launch at login**. The app uses [macOS Service Management](https://developer.apple.com/documentation/servicemanagement/smappservice) to register itself as a login item. The checkbox reads the actual system state rather than a saved app preference. If macOS requires approval, use **Open Login Items** in Settings and allow Codex Quota in System Settings. Settings also contains quota alerts, the weekly threshold, and appearance. Back or Escape returns to the previous quota view; changes save automatically.
 
 At login the app refreshes accounts in the background and leaves the panel closed. Opening it in Finder shows the panel. Turn the checkbox off to stop automatic startup; you can also manage it in System Settings → General → Login Items. Quitting stops the current session without disabling the next login launch.
 
@@ -88,6 +88,8 @@ The file is mode `0600`. The directory is mode `0700`. `CODEX_QUOTA_DIR` points 
 swift run CodexQuotaChecks
 ```
 
-The checks talk only to `Tests/Fixtures/mock_app_server.py`. They do not call OpenAI and they do not read a Codex home that already has a login. This Mac's command-line tools do not include XCTest, so the checks are a small executable rather than an XCTest bundle.
+The checks use `Tests/Fixtures/mock_app_server.py` and controlled model dependencies. They do not call OpenAI and they do not read a Codex home that already has a login. The project uses an executable check suite rather than an XCTest bundle.
 
 The pacing rules those checks lock are written up in [quota-app-plan.md](quota-app-plan.md).
+
+For UI examples, see the [feature guide and gallery](FEATURES.md). For isolated demo data and documentation assets, use the [showcase workflow](SHOWCASE.md#capture-safe-demo-material).

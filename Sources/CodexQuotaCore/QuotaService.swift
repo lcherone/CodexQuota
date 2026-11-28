@@ -96,6 +96,36 @@ public struct QuotaService: Sendable {
         }
     }
 
+    public func workspaceMessages(home: String) async throws -> WorkspaceMessagesDetails {
+        try await withSession(home: home) { session in
+            try await session.initialize()
+            let value = try await session.request(method: "account/workspaceMessages/read", params: nil, timeout: QuotaTiming.rpcTimeout)
+            return try AccountDetailsParsing.workspace(value)
+        }
+    }
+
+    public func conversations(home: String, cursor: String?, archived: Bool) async throws -> ConversationPage {
+        try await withSession(home: home) { session in
+            try await session.initialize()
+            var params: [String: JSONValue] = [
+                "limit": .number(20), "sortKey": .string("updated_at"), "sortDirection": .string("desc"),
+                "archived": .bool(archived), "modelProviders": .array([]), "useStateDbOnly": .bool(true)
+            ]
+            if let cursor { params["cursor"] = .string(cursor) }
+            let value = try await session.request(method: "thread/list", params: .object(params), timeout: QuotaTiming.rpcTimeout)
+            return try AccountDetailsParsing.conversations(value)
+        }
+    }
+
+    public func conversationUsage(home: String, threadID: String) async throws -> ConversationUsageDetails? {
+        guard UUID(uuidString: threadID) != nil else { throw QuotaFailure.refused("an invalid conversation ID") }
+        return try await withSession(home: home) { session in
+            try await session.initialize()
+            let value = try await session.request(method: "account/usage/read", params: .object(["threadId": .string(threadID)]), timeout: QuotaTiming.rpcTimeout)
+            return try AccountDetailsParsing.conversationUsage(value, threadID: threadID)
+        }
+    }
+
     private func readQuota(_ session: CodexSession, account: JSONValue) async throws -> UsageReading {
         let limits = try await session.request(method: "account/rateLimits/read", params: QuotaCalls.empty, timeout: QuotaTiming.rpcTimeout)
         do {

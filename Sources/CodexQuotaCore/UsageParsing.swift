@@ -7,7 +7,7 @@ public enum UsageParsing {
         let short = shortWindow(from: limits)
         let summary = usage.object?["summary"]?.object
         let buckets = usage.object?["dailyUsageBuckets"]?.array?.compactMap(bucket) ?? []
-        return UsageReading(
+        var reading = UsageReading(
             identity: identity,
             weekly: weekly,
             shortWindow: short,
@@ -18,6 +18,8 @@ public enum UsageParsing {
             currentStreakDays: summary?["currentStreakDays"]?.int64,
             longestStreakDays: summary?["longestStreakDays"]?.int64
         )
+        reading.quotaDetails = AccountDetailsParsing.quota(limits)
+        return reading
     }
 
     public static func isSignedIn(_ account: JSONValue) -> Bool {
@@ -67,7 +69,9 @@ public enum UsageParsing {
 
     private static func shortWindow(from limits: JSONValue) -> ShortWindow? {
         let candidates = windows(from: limits).filter { $0.minutes >= 60 && $0.minutes <= 720 }
-        guard let best = candidates.min(by: { abs($0.minutes - 300) < abs($1.minutes - 300) }) else { return nil }
+        let preferred = candidates.filter(isCodex)
+        let pool = preferred.isEmpty ? candidates : preferred
+        guard let best = pool.min(by: { abs($0.minutes - 300) < abs($1.minutes - 300) }) else { return nil }
         return ShortWindow(usedPercent: best.used, windowDurationMins: best.minutes, resetsAt: best.resetsAt)
     }
 

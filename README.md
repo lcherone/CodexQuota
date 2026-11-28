@@ -1,96 +1,104 @@
 <p align="center">
-  <img src="docs/assets/branding/hero.png" alt="Codex Quota. Pace the week, one slice a day. The menu-bar panel shows today's slice beside the week." width="880">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/branding/hero-dark.png">
+    <img src="docs/assets/branding/hero-light.png" alt="Codex Quota. Pace the week, one slice a day. A real Mac menu-bar panel shows a daily budget beside a weekly allowance, using offline sample data." width="960">
+  </picture>
 </p>
 
-<h1 align="center">Pace the week, one slice a day.</h1>
+<h1 align="center">A little perspective on your Codex allowance.</h1>
 
 <p align="center">
-  Codex Quota is a Mac menu-bar panel for a Codex weekly allowance.<br>
-  It tells you how today is going, not only how the week looks.
+  A native Mac menu-bar app that puts today’s usage in the context of your week.<br>
+  Keep personal and work accounts together, follow the history, and leave room for the next idea.
 </p>
 
 <p align="center">
-  <a href="#get-started"><strong>Get started</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#what-you-can-do">What you can do</a>
-  &nbsp;·&nbsp;
-  <a href="docs/quota-app-plan.md">How the pacing works</a>
-  &nbsp;·&nbsp;
+  <a href="docs/GETTING-STARTED.md"><img src="docs/assets/branding/badge-platform.svg" alt="Requires macOS 14 or later" height="28"></a>
+  <a href="Package.swift"><img src="docs/assets/branding/badge-swift.svg" alt="Built with Swift 6" height="28"></a>
+  <a href="#get-started"><img src="docs/assets/branding/badge-source.svg" alt="Install by building from source" height="28"></a>
+</p>
+
+<p align="center">
+  <a href="#get-started"><strong>Get started</strong></a> &nbsp;·&nbsp;
+  <a href="#see-it-in-action">Take the tour</a> &nbsp;·&nbsp;
+  <a href="docs/FEATURES.md">Explore the features</a> &nbsp;·&nbsp;
   <a href="docs/GETTING-STARTED.md">Build and run</a>
 </p>
 
-<p align="center">
-  macOS 14 or later &nbsp;·&nbsp; menu bar, no Dock icon &nbsp;·&nbsp; built from source &nbsp;·&nbsp; no license file yet
-</p>
+## A weekly percentage only tells half the story
 
-A weekly allowance is one number. The day you are in is another. You can be comfortable for the week and already past today's share, or the other way around. Codex Quota splits the week into seven equal slices, in Europe/London, and puts today's slice in the menu bar.
+You can be comfortable for the week and already past today’s share. Codex Quota divides the weekly window into seven equal slices and puts the current slice in your menu bar. Open the panel when you want the rest of the picture.
 
-## The panel
+**A pacing guide, not another limit.** The daily budget comes from your weekly allowance. It does not create an extra provider-imposed cap or predict what you will use next.
 
-Open the app to show the panel, or click its figure in the menu bar. Opening the app again brings the panel back. There is no desktop window and no Dock icon while the app is running.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/panel-dark.png">
-  <img src="docs/assets/screenshots/panel-light.png" alt="Light panel. Today is still unknown, the week is 10 percent used, and Friday is outlined. Launch at login is enabled." width="420">
-</picture>
-
-The large pair is the point. **Today** is this slice, as a percent of a fair share of the week; a dash means it cannot be measured yet. **Week** is how much of the allowance is already used. The row underneath is each slice as a percent of the week, and the box is the slice you are in now.
-
-The panels on this page were captured from the real app against a local stand-in. The address `person@example.com` and the figures are sample readings, not a live Codex account.
-
-## What you can do
-
-**See the day and the week at once.**
-The menu-bar title is the glance: `49%`, `154% over`, or `62% wk` when today is still unknown. With one account it stays that compact; with more than one it adds a short selected-account name, such as `Work · 49%`. The full account name and reading remain available in the tooltip and to VoiceOver. The panel is where the sentence lives: ahead of the slice, inside it, or still filling in.
-
-**Keep more than one account.**
-Personal and work each get a Codex home on this Mac. The list shows the week percent. Add one, and the panel reads it. Sign-in opens in the browser. The library stores readings, not tokens.
-
-**Look back without losing the plot.**
-Finished weeks stay in the list. Usage stats use compact K/M/B/T figures, with exact counts on hover. Lifetime tokens, peak day, longest turn, and current and longest streaks come from Codex. Recorded tokens, the completed-week average, and the current open week come from this Mac's library. When there is no completed week yet, the current partial week is clearly labelled as the fallback. Expand Daily tokens to see every day returned in the latest reading; unavailable stats show a dash.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/stats-dark.png">
-  <img src="docs/assets/screenshots/stats-light.png" alt="Expanded usage stats with compact token totals, streaks, longest turn, and a daily token count." width="420">
-</picture>
-
-**Leave a reading behind when you sign out.**
-The last percent and its reset stay on the machine. The open week is not called "last week."
+## Today, the week, and everything in between
 
 <p align="center">
-  <img src="docs/assets/screenshots/signed-out-dark.png" alt="Signed out of Personal in the dark panel. The last reading is 62 percent, resetting Saturday 28 November. Work is still 62 percent." width="420">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/overview-dark.png">
+    <img src="docs/assets/screenshots/overview-light.png" alt="Overview: Personal is 62% through its weekly allowance and 49% through today’s daily budget. A separate Work account is 34% used." width="380">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/usage-dark.png">
+    <img src="docs/assets/screenshots/usage-light.png" alt="Usage: a dated daily-token bar chart, an open quota window at 62%, and completed windows at 81% and 48%." width="380">
+  </picture>
 </p>
 
-**Match the desk.**
-System, Light, and Dark live on the footer, next to Quit, and the choice is kept. Light is white with black text. Dark is black with white text. Hairline rules, no coloured cards.
+**See how the day is going.** Daily and weekly budget bars stay separate. The daily figure turns amber above 100%; **≥** marks a partial reading. The seven-slice strip shows what has been recorded and which slice is in progress.
 
-**Start with your Mac.**
-Install the app in Applications, then enable **Launch at login** in the panel. It starts quietly in the menu bar after you sign in to macOS. The checkbox reflects the system setting, and the panel links to Login Items if approval is needed.
+**Keep your accounts in view.** Personal and work each get their own Codex home. The account rows show weekly usage, with refresh, sign-in and account management close by. No Dock icon. No desktop window to keep open.
 
-Before any account exists, the panel invites you to add one. Enter a name and press Return, then sign in with ChatGPT.
-
-<p align="center">
-  <img src="docs/assets/screenshots/empty-light.png" alt="Empty light panel. Add account starts setup. Launch at login is enabled, with System, Light, Dark, and Quit below." width="420">
-</p>
-
-## A week, in plain language
-
-The allowance is the whole week. Each of the seven slices is an equal share of it. Today is measured against the slice you are in, not against the whole week.
-
-If the provider did not include a reset time, today's slice stays hidden and the menu shows the week. A reading older than 15 minutes says so, and the last good numbers stay.
+**Look back without a spreadsheet.** A real-date token chart, weekly history and eight statistics make the library worth revisiting. Choose the latest 14 records or all available daily history; expand exact values when you need them. Missing readings stay missing.
 
 <details>
-<summary>Where the numbers come from</summary>
+<summary><strong>What lives in the four tabs?</strong></summary>
 
-Codex Quota talks to the Codex app server on this Mac, over stdio. It asks `account/read`, `account/rateLimits/read`, and `account/usage/read`. Sign-in uses `account/login/start`. Tokens stay in that account's Codex home.
+| Tab | What you can explore |
+| --- | --- |
+| **Overview** | Daily and weekly budgets, the seven quota-day slices, pacing guidance and reset time. |
+| **Limits** | Quota windows, credits, monthly limits, spending-control status and earned resets, when supplied. |
+| **Usage** | Daily-token chart, weekly history, token totals, streaks, longest turn and exact daily records. |
+| **Activity** | Active or archived conversations, estimated conversation usage and Workspace messages. |
 
-Days are equal slices of the weekly window, named in Europe/London. The full rules, including the worked example, are in [the pacing plan](docs/quota-app-plan.md).
+Optional account details are shown only when available. Earned resets are displayed for reference; the app does not redeem them. [See the full feature guide →](docs/FEATURES.md)
 
 </details>
 
+## See it in action
+
+Open the panel, check today, look back at your history, then explore an account’s limits and conversations. Settings is one click away; Back takes you to the view you left.
+
+<details>
+<summary><strong>Play the 15-second product tour</strong> · animation inside</summary>
+
+<p align="center">
+  <img src="docs/assets/demos/product-tour.gif" alt="Tour of the real app: Overview, token history, statistics, Limits, Conversations, Settings, then back to Overview." width="400">
+</p>
+
+This short, looping tour is assembled from genuine app captures. The static screenshots above and the [feature gallery](docs/FEATURES.md) cover the same experience without animation.
+
+</details>
+
+All product screenshots use an isolated offline demo with reserved example addresses and sample readings. They show the implemented app, not generated mockups. Optional provider data shown in the demo is not guaranteed for every account.
+
+## Make it feel at home
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/settings-dark.png">
+    <img src="docs/assets/screenshots/settings-light.png" alt="Settings with styled checkboxes for Launch at login and Quota alerts, plus labelled System, Light and Dark appearance choices." width="400">
+  </picture>
+</p>
+
+**Your Mac, your appearance.** System follows macOS; Light uses a warm white surface; Dark uses charcoal. The saved choice is also available in the main footer.
+
+**Quiet until you need it.** Enable Launch at login after installing in Applications. Turn on Quota alerts to hear when an account crosses your weekly threshold, goes ahead of its daily slice or reaches an allowance. Alerts apply to all accounts and require macOS notification permission.
+
+Settings saves automatically. **Back** or **Escape** returns to the previous account, tab and scroll position. The uninstalled demo pictured above correctly keeps startup registration disabled. [Settings and account details →](docs/FEATURES.md#settings)
+
 ## Get started
 
-Build and install from source on a Mac with **macOS 14+**, **Swift 6**, and the **Codex CLI** already installed:
+You need **macOS 14+**, **Swift 6** from Xcode or Command Line Tools, and a separately installed **Codex CLI**. No API key is required by this utility.
 
 ```sh
 git clone https://github.com/lcherone/CodexQuota.git
@@ -99,43 +107,48 @@ cd CodexQuota
 open "$HOME/Applications/CodexQuota.app"
 ```
 
-The installer uses `~/Applications`, needs no administrator access, and keeps account data when updating. Quit the app before running it again. Enable **Launch at login** in the installed app to start automatically. Opening it normally shows the panel; Escape or clicking elsewhere dismisses it, and Quit is on the footer.
+The installer builds and verifies the app, then places it in `~/Applications` without administrator access. Add an account, sign in with ChatGPT, and check the menu bar. For automatic startup, open **Settings → Launch at login**.
 
-To make the bundle and ZIP without installing:
+**Current availability:** this is an early app, version **0.1.0**, built from source. There is no published binary download. Local bundles are signed ad hoc, not Developer ID signed or notarized. [Installation, updates and troubleshooting →](docs/GETTING-STARTED.md)
+
+<details>
+<summary><strong>Build a bundle, or run from the checkout</strong></summary>
 
 ```sh
+# Build the app bundle and ZIP for this Mac’s architecture.
 ./scripts/build-app.sh
 open build/CodexQuota.app
-```
 
-This creates `build/CodexQuota.app` and `build/CodexQuota.zip` for the Mac architecture you build on. You can also move the app into `/Applications` or `~/Applications` in Finder. The bundle includes the utility, icon, and metadata; the Codex CLI remains a separate prerequisite.
-
-The bundle is signed ad hoc for local use, not Developer ID signed or notarized. There is no published binary release yet. More install, update, startup, and removal details are in [Build and run](docs/GETTING-STARTED.md).
-
-For development without a bundle:
-
-```sh
+# Run an unbundled development build.
 swift run CodexQuota
-```
 
-Checks run against a local mock. They do not call OpenAI and they do not read a Codex home that already has a login.
-
-```sh
+# Run isolated, mock-backed checks.
 swift run CodexQuotaChecks
 ```
 
-The same check executable includes isolated production `AppModel` workflows using controlled services and task-scoped temporary storage. Those scenarios do not open a browser, deliver notifications, start Codex, or read the user's real Codex home.
+The checks do not contact OpenAI, open a sign-in browser, deliver notifications or use your signed-in Codex homes. Quit the app before updating it. [Development and checks →](CONTRIBUTING.md)
 
-More detail is in [Build and run](docs/GETTING-STARTED.md).
+</details>
 
-## Status
+## A small panel. A local library.
 
-This is an early Mac app, version 0.1.0, for macOS 14 and later. It is a menu-bar utility, not a document you leave on the desktop.
+Readings stay on this Mac, along with account names and appearance preferences. Sign-in tokens stay in each account’s app-created Codex home, outside the usage-history library. Quota requests go through your installed Codex app server.
 
-The repository does not include a license file. Do not assume a license until one is added.
+Signing out keeps the last reading. Removing an account is a separate, confirmed action that deletes its app-created home and recorded history. A stale reading is labelled; a failed refresh keeps the previous good result.
 
-Issues and ideas belong on the [issue tracker](https://github.com/lcherone/CodexQuota/issues).
+[How the seven slices work](docs/quota-app-plan.md) &nbsp;·&nbsp; [What stays on your Mac](docs/GETTING-STARTED.md#what-stays-on-this-mac)
+
+## Explore further
+
+- [Feature guide and screenshot gallery](docs/FEATURES.md)
+- [Install, update, configure and troubleshoot](docs/GETTING-STARTED.md)
+- [Pacing rules and worked examples](docs/quota-app-plan.md)
+- [Contributing and reporting a bug](CONTRIBUTING.md)
+- [Brand assets, capture workflow and social preview](docs/SHOWCASE.md)
+- [Report a problem or suggest an improvement](https://github.com/lcherone/CodexQuota/issues)
+
+No license file has been added yet; reuse and redistribution terms are not specified.
 
 <p align="center">
-  <img src="docs/assets/branding/mark.svg" alt="" width="72">
+  <img src="docs/assets/branding/mark.svg" alt="" width="48">
 </p>

@@ -15,6 +15,10 @@ public final class AppModel {
     public private(set) var authRequired: Set<String> = []
     public private(set) var alertPermission: LocalNotificationPermission = .unknown
     public private(set) var aggregateRefresh: AggregateRefreshState = .idle
+    public private(set) var workspaceDetails: [String: DetailsLoad<WorkspaceMessagesDetails>] = [:]
+    public private(set) var conversationDetails: [String: DetailsLoad<ConversationPage>] = [:]
+    public private(set) var conversationUsageDetails: [String: DetailsLoad<ConversationUsageDetails>] = [:]
+    private var detailsGenerations: [String: UUID] = [:]
     private var libraryNotice = LibraryNoticeState()
     public private(set) var libraryReady = false
     private let history: AppHistory
@@ -236,6 +240,7 @@ public final class AppModel {
         }
         phase[id] = nil
         refreshFailures.remove(id)
+        clearDetails(id)
         banners[id] = nil
         authRequired.remove(id)
         var cleaned = store
@@ -352,6 +357,7 @@ public final class AppModel {
             authRequired: authRequired.contains(id)
         )
         phase[id] = .signingIn
+        clearDetails(id)
         banners[id] = nil
         let task = Task { [weak self] in
             guard let self else { return }
@@ -386,6 +392,7 @@ public final class AppModel {
                 phase[id] = .failed(QuotaFailure.signInFailed.message)
                 return
             }
+            clearDetails(id)
             await apply(reading, to: id)
             phase[id] = .idle
         } catch is CancellationError {
@@ -413,6 +420,7 @@ public final class AppModel {
         phase[id] = .refreshing
         do {
             try await service.signOut(account.codexHome)
+            clearDetails(id)
             authRequired.insert(id)
             phase[id] = .idle
             banners[id] = "Signed out on this Mac."
@@ -461,6 +469,7 @@ public final class AppModel {
             reading: reading,
             previous: previousSample
         ) else {
+            clearDetails(id)
             authRequired.insert(id)
             banners[id] = "Sign in with ChatGPT to read this account."
             return
@@ -576,4 +585,114 @@ private struct SignInOperation {
     var token: UUID
     var task: Task<Void, Never>
     var presentation: SignInPresentation
+}
+
+extension AppModel {
+    public static func conversationsKey(_ accountID: String, archived: Bool) -> String {
+        "\(accountID)/\(archived ? "archived" : "active")"
+    }
+
+    public static func conversationUsageKey(_ accountID: String, threadID: String) -> String {
+        "\(accountID)/\(threadID.lowercased())"
+    }
+
+    private func detailsGeneration(_ id: String) -> UUID {
+        if let generation = detailsGenerations[id] { return generation }
+        let generation = UUID()
+        detailsGenerations[id] = generation
+        return generation
+    }
+
+    private func clearDetails(_ id: String) {
+        detailsGenerations[id] = UUID()
+        workspaceDetails[id] = nil
+        conversationDetails = conversationDetails.filter { !$0.key.hasPrefix(id + "/") }
+        conversationUsageDetails = conversationUsageDetails.filter { !$0.key.hasPrefix(id + "/") }
+    }
+
+    private func detailsHome(_ id: String) -> String? {
+        guard libraryReady, !authRequired.contains(id), phase[id] != .signingIn else { return nil }
+        return store.accounts.first { $0.id == id }?.codexHome
+    }
+
+    private func detailsError(_ error: Error) -> String {
+        if let failure = error as? QuotaFailure { return failure.message }
+        if error is CancellationError { return "Request cancelled. Try again." }
+        return "These details couldn't be read. Try again."
+    }
+
+    public func loadWorkspaceDetails(_ id: String, force: Bool = false) async {
+        guard let home = detailsHome(id) else { return }
+        var state = workspaceDetails[id] ?? DetailsLoad()
+        guard !state.isLoading else { return }
+        if !force, let checked = state.checkedAt, now().timeIntervalSince(checked) < QuotaTiming.refreshInterval { return }
+        let generation = detailsGeneration(id)
+        state.isLoading = true
+        state.error = nil
+        workspaceDetails[id] = state
+        do {
+            let value = try await service.workspaceMessages(home)
+            try Task.checkCancellation()
+            state.value = value
+            state.checkedAt = now()
+        } catch {
+            state.error = detailsError(error)
+        }
+        guard detailsGenerations[id] == generation else { return }
+        state.isLoading = false
+        workspaceDetails[id] = state
+    }
+
+    public func loadConversations(_ id: String, archived: Bool, more: Bool = false, force: Bool = false) async {
+        guard let home = detailsHome(id) else { return }
+        let key = Self.conversationsKey(id, archived: archived)
+        var state = conversationDetails[key] ?? DetailsLoad()
+        guard !state.isLoading else { return }
+        if !more, !force, let checked = state.checkedAt, now().timeIntervalSince(checked) < QuotaTiming.refreshInterval { return }
+        let cursor = more ? state.value?.nextCursor : nil
+        if more, cursor == nil { return }
+        let generation = detailsGeneration(id)
+        state.isLoading = true
+        state.error = nil
+        conversationDetails[key] = state
+        do {
+            var page = try await service.conversations(home, cursor, archived)
+            try Task.checkCancellation()
+            if more {
+                var seen = Set<String>()
+                page.conversations = ((state.value?.conversations ?? []) + page.conversations).filter { seen.insert($0.id).inserted }
+                if page.nextCursor == cursor { page.nextCursor = nil }
+            }
+            state.value = page
+            state.checkedAt = now()
+        } catch {
+            state.error = detailsError(error)
+        }
+        guard detailsGenerations[id] == generation else { return }
+        state.isLoading = false
+        conversationDetails[key] = state
+    }
+
+    public func loadConversationUsage(_ id: String, threadID: String, force: Bool = false) async {
+        guard let home = detailsHome(id), UUID(uuidString: threadID) != nil else { return }
+        let key = Self.conversationUsageKey(id, threadID: threadID)
+        var state = conversationUsageDetails[key] ?? DetailsLoad()
+        guard !state.isLoading else { return }
+        if !force, let checked = state.checkedAt, now().timeIntervalSince(checked) < QuotaTiming.refreshInterval { return }
+        let generation = detailsGeneration(id)
+        state.isLoading = true
+        state.error = nil
+        conversationUsageDetails[key] = state
+        do {
+            let value = try await service.conversationUsage(home, threadID)
+            try Task.checkCancellation()
+            state.value = value
+            state.checkedAt = now()
+        } catch {
+            state.error = detailsError(error)
+        }
+        guard detailsGenerations[id] == generation else { return }
+        state.isLoading = false
+        conversationUsageDetails[key] = state
+    }
 }

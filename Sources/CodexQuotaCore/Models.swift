@@ -53,6 +53,7 @@ public struct UsageSample: Codable, Equatable, Sendable {
     public var longestStreakDays: Int64? = nil
     public var optionalStatisticsSampledAt: Date? = nil
     public var optionalStatisticsArePartial: Bool? = nil
+    public var quotaDetails: QuotaDetails? = nil
 
     public init(
         accountId: String,
@@ -74,7 +75,8 @@ public struct UsageSample: Codable, Equatable, Sendable {
         currentStreakDays: Int64? = nil,
         longestStreakDays: Int64? = nil,
         optionalStatisticsSampledAt: Date? = nil,
-        optionalStatisticsArePartial: Bool? = nil
+        optionalStatisticsArePartial: Bool? = nil,
+        quotaDetails: QuotaDetails? = nil
     ) {
         self.accountId = accountId
         self.sampledAt = sampledAt
@@ -96,6 +98,7 @@ public struct UsageSample: Codable, Equatable, Sendable {
         self.longestStreakDays = longestStreakDays
         self.optionalStatisticsSampledAt = optionalStatisticsSampledAt
         self.optionalStatisticsArePartial = optionalStatisticsArePartial
+        self.quotaDetails = quotaDetails
     }
 
     public static func make(
@@ -174,7 +177,8 @@ public struct UsageSample: Codable, Equatable, Sendable {
             currentStreakDays: retained?.currentStreakDays ?? reading.currentStreakDays,
             longestStreakDays: retained?.longestStreakDays ?? reading.longestStreakDays,
             optionalStatisticsSampledAt: reading.optionalUsageSucceeded ? sampledAt : retainedStatisticsTime,
-            optionalStatisticsArePartial: !reading.optionalUsageSucceeded
+            optionalStatisticsArePartial: !reading.optionalUsageSucceeded,
+            quotaDetails: reading.quotaDetails
         )
     }
 
@@ -326,6 +330,12 @@ public struct ShortWindow: Equatable, Sendable {
     public var usedPercent: Double
     public var windowDurationMins: Double
     public var resetsAt: Date?
+
+    public init(usedPercent: Double, windowDurationMins: Double, resetsAt: Date? = nil) {
+        self.usedPercent = usedPercent
+        self.windowDurationMins = windowDurationMins
+        self.resetsAt = resetsAt
+    }
 }
 
 public struct UsageReading: Equatable, Sendable {
@@ -339,6 +349,7 @@ public struct UsageReading: Equatable, Sendable {
     public var currentStreakDays: Int64? = nil
     public var longestStreakDays: Int64? = nil
     public var optionalUsageSucceeded: Bool = true
+    public var quotaDetails: QuotaDetails? = nil
 }
 
 public struct WeekStat: Equatable, Identifiable, Sendable {

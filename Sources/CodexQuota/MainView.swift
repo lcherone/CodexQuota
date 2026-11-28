@@ -6,13 +6,17 @@ import SwiftUI
 struct MainView: View {
     var model: AppModel
     var availableHeight: CGFloat = 640
+    var onDismiss: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
+    @State private var showingSettings = false
     @State private var adding = false
     @State private var renaming = false
     @State private var draft = ""
     @State private var confirmingRemoval = false
     @State private var dailyExpanded = false
+    @State private var visibleDailyCount = 14
     @State private var weeklyHistoryExpanded = false
+    @State private var selectedTab: AccountTab = .overview
     @FocusState private var nameFocused: Bool
 
     private var palette: Palette { Palette.current(resolvedScheme) }
@@ -36,6 +40,14 @@ struct MainView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             VStack(spacing: 0) {
+                if let account = model.selectedAccount {
+                    accountsSection
+                    hairline
+                    header(account, sample: model.latestSample(for: account.id))
+                    hairline
+                    QuotaTabs(values: AccountTab.allCases, selection: $selectedTab, title: { $0.rawValue })
+                        .padding(.horizontal, PanelMetrics.horizontalPadding)
+                }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         if let note = model.libraryNote {
@@ -48,22 +60,47 @@ struct MainView: View {
                         }
                     }
                 }
-                .frame(maxHeight: max(PanelMetrics.minimumScrollHeight, availableHeight - PanelMetrics.footerAllowance))
+                .id("\(model.selectedAccount?.id ?? "empty")/\(selectedTab.rawValue)")
                 hairline
                 footer
             }
-            .frame(width: PanelMetrics.width)
-            .fixedSize(horizontal: true, vertical: true)
+            .frame(width: PanelMetrics.width, height: availableHeight)
+            .opacity(showingSettings ? 0 : 1)
+            .accessibilityHidden(showingSettings)
+            .allowsHitTesting(!showingSettings)
+            .disabled(showingSettings)
+            .overlay {
+                if showingSettings {
+                    QuotaSettingsView(model: model, onBack: { showingSettings = false })
+                        .background(palette.background)
+                }
+            }
         }
+        .font(.system(size: 13))
+        .foregroundStyle(palette.ink)
+        .tint(palette.accent)
         .background(palette.background)
         .preferredColorScheme(forcedScheme)
         .background(AppearanceAnchor(choice: model.store.appearance))
+        .onReceive(NotificationCenter.default.publisher(for: .quotaPanelEscape)) { _ in
+            if showingSettings {
+                showingSettings = false
+            } else if adding || renaming || confirmingRemoval {
+                cancelEditing()
+            } else {
+                onDismiss()
+            }
+        }
         .onChange(of: model.selectedAccount?.id) {
             confirmingRemoval = false
             adding = false
             renaming = false
             dailyExpanded = false
+            visibleDailyCount = 14
             weeklyHistoryExpanded = false
+        }
+        .onChange(of: dailyExpanded) {
+            if !dailyExpanded { visibleDailyCount = 14 }
         }
         .onChange(of: adding) {
             if !adding { nameFocused = false }
@@ -84,100 +121,22 @@ struct MainView: View {
     }
 
     private var footer: some View {
-        VStack(spacing: 8) {
-            startupSection
-            alertsSection
-            HStack(spacing: 8) {
-                Picker("Appearance", selection: Binding(
-                    get: { model.store.appearance },
-                    set: { model.setAppearance($0) }
-                )) {
-                    Text("System").tag(PanelAppearance.system)
-                    Text("Light").tag(PanelAppearance.light)
-                    Text("Dark").tag(PanelAppearance.dark)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .tint(palette.ink)
-                .frame(maxWidth: 210)
-                .disabled(!model.libraryReady)
-                Spacer(minLength: 8)
-                Button("Quit") { NSApp.terminate(nil) }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-                    .keyboardShortcut("q")
+        HStack(spacing: 12) {
+            Button { showingSettings = true } label: {
+                Label("Settings", systemImage: "gearshape")
             }
+            .buttonStyle(.borderless)
+            AppearancePicker(model: model)
+                .frame(maxWidth: 210)
+            Spacer(minLength: 0)
+            Button("Quit") { NSApp.terminate(nil) }
+                .buttonStyle(.borderless)
+                .keyboardShortcut("q")
         }
         .font(.system(size: 11))
         .foregroundStyle(palette.secondary)
         .padding(.horizontal, PanelMetrics.horizontalPadding)
-        .padding(.vertical, 10)
-    }
-
-    private var startupSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle("Launch at login", isOn: Binding(
-                get: { model.loginItem.isEnabled },
-                set: { model.loginItem.setEnabled($0) }
-            ))
-            .toggleStyle(.checkbox)
-            .tint(palette.ink)
-            .disabled(!model.loginItem.canConfigure)
-            if !model.loginItem.canConfigure {
-                Text("Install in Applications to enable startup.")
-                    .foregroundStyle(palette.secondary)
-            }
-            if model.loginItem.needsApproval {
-                Text("Allow Codex Quota in Login Items to finish setup.")
-                    .foregroundStyle(palette.secondary)
-                actionButton("Open Login Items", icon: "gearshape") { model.loginItem.openSettings() }
-            }
-            if let error = model.loginItem.error {
-                Text(error)
-                    .foregroundStyle(palette.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                actionButton("Open Login Items", icon: "gearshape") { model.loginItem.openSettings() }
-            }
-        }
-        .font(.system(size: 11))
-        .foregroundStyle(palette.ink)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var alertsSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle("Quota alerts", isOn: Binding(
-                get: { model.alertsEnabled },
-                set: { enabled in Task { await model.setAlertsEnabled(enabled) } }
-            ))
-            .toggleStyle(.checkbox)
-            .tint(palette.ink)
-            .disabled(!model.libraryReady || model.alertPermission == .unavailable)
-            if model.alertsEnabled {
-                Stepper(
-                    "Weekly threshold: \(model.store.alertPreferences.weeklyThreshold)%",
-                    value: Binding(
-                        get: { model.store.alertPreferences.weeklyThreshold },
-                        set: { model.setAlertThreshold($0) }
-                    ),
-                    in: QuotaAlertPreferences.supportedThresholds,
-                    step: 5
-                )
-                .accessibilityLabel("Weekly quota alert threshold")
-                .accessibilityValue("\(model.store.alertPreferences.weeklyThreshold) percent")
-            }
-            if model.alertPermission == .denied {
-                Text("Alerts are off. Allow Codex Quota notifications in System Settings.")
-                    .foregroundStyle(palette.secondary)
-                actionButton("Open Notification Settings", icon: "gearshape") {
-                    model.openNotificationSettings()
-                }
-            } else if model.alertPermission == .unavailable {
-                Text("Notifications are unavailable on this Mac.")
-                    .foregroundStyle(palette.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 12)
     }
 
     private var emptyState: some View {
@@ -197,7 +156,7 @@ struct MainView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
         .padding(.vertical, 10)
     }
 
@@ -207,7 +166,6 @@ struct MainView: View {
         let weeks = UsageStats.weeks(samples: model.samples(for: account.id), now: now)
         let totals = UsageStats.totals(samples: model.samples(for: account.id), now: now)
         return VStack(alignment: .leading, spacing: 0) {
-            header(account, sample: sample)
             if let message = model.banners[account.id] {
                 noteLine(message)
             }
@@ -228,7 +186,7 @@ struct MainView: View {
                 signedOut(account, sample: sample, pace: pace, now: now)
             } else if sample == nil {
                 waiting(account)
-            } else {
+            } else if selectedTab == .overview {
                 todaySection(sample: sample, pace: pace)
                 if let pace {
                     paceSection(pace)
@@ -236,17 +194,20 @@ struct MainView: View {
                 if let sample, let reached = sample.reached {
                     noteLine(reachedSentence(reached))
                 }
+            } else if selectedTab == .limits {
+                LimitsDetailsView(details: sample?.quotaDetails, now: now)
+            } else if selectedTab == .usage {
+                historySection(totals, weeks: weeks, sample: sample)
+            } else {
+                ActivityDetailsView(model: model, account: account)
+                    .id(account.id)
             }
-            hairline
-            accountsSection
-            hairline
-            historySection(totals, weeks: weeks, sample: sample)
         }
     }
 
     private func header(_ account: AccountRecord, sample: UsageSample?) -> some View {
         let busy = model.isBusy(account.id)
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
                 Text(account.label)
                     .font(.system(size: 13, weight: .semibold))
@@ -300,7 +261,7 @@ struct MainView: View {
             }
         }
         .padding(.horizontal, PanelMetrics.horizontalPadding)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
     }
 
     private var aggregateRefreshStatus: String? {
@@ -309,9 +270,9 @@ struct MainView: View {
             return nil
         case let .running(total, completed, _, _):
             return "Refreshing all \(completed) of \(total)"
-        case let .completed(total, _, failed, busySkipped):
+        case let .completed(_, _, failed, busySkipped):
             if failed == 0, busySkipped == 0 {
-                return total == 1 ? "Account refreshed" : "All accounts refreshed"
+                return nil
             }
             var parts: [String] = []
             if failed > 0 { parts.append("\(failed) failed") }
@@ -351,7 +312,7 @@ struct MainView: View {
                 .foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
         .padding(.vertical, 8)
     }
 
@@ -374,7 +335,7 @@ struct MainView: View {
                     .foregroundStyle(palette.ink)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
         .padding(.vertical, 8)
     }
 
@@ -387,51 +348,66 @@ struct MainView: View {
     }
 
     private func todaySection(sample: UsageSample?, pace: PaceReport?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 20) {
-                metricBlock(
-                    "Today",
-                    heroNumber(pace: pace, sample: sample),
-                    heroCaption(pace),
-                    access: heroAccess(pace: pace, sample: sample)
-                )
-                metricBlock(
-                    "Week",
-                    weekNumber(pace: pace, sample: sample),
-                    weekCaption(pace)
-                )
-                Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                sectionTitle("Daily budget used")
+                Text(heroNumber(pace: pace, sample: sample))
+                    .font(.system(size: 32, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle((pace?.todaySlicePercent ?? 0) > 100 ? palette.warning : palette.ink)
+                if let used = pace?.todaySlicePercent {
+                    QuotaMeter(percent: used, color: used > 100 ? palette.warning : palette.accent)
+                }
+                Text(dailyBudgetCaption(pace)).font(.system(size: 12))
+                if pace?.todayKind == .partial {
+                    Text("Partial reading · actual usage may be higher")
+                        .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                } else if pace?.todayKind == .estimated {
+                    Text("Estimated from daily tokens")
+                        .font(.system(size: 11)).foregroundStyle(palette.secondary)
+                }
             }
-            Text(statusLine(pace))
-                .font(.system(size: 12))
-                .foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+            hairline
+            VStack(alignment: .leading, spacing: 6) {
+                sectionTitle("Weekly allowance")
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(weekNumber(pace: pace, sample: sample))
+                        .font(.system(size: 28, weight: .semibold)).monospacedDigit()
+                    Text("used").font(.system(size: 13)).foregroundStyle(palette.secondary)
+                }
+                if let used = sample?.usedPercent {
+                    QuotaMeter(percent: used, color: palette.accent)
+                }
+                Text(sample?.resetsAt.map { "Resets \(LondonClock.resetLine($0))" } ?? "Reset time not supplied")
+                    .font(.system(size: 11)).foregroundStyle(palette.secondary)
+            }
+            .accessibilityElement(children: .combine)
             if let minutes = sample?.shortDurationMins, let used = sample?.shortUsedPercent {
-                Text("\(shortLabel(minutes)) \(Int(used.rounded()))% used.")
+                hairline
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(shortLabel(minutes))
+                        Spacer()
+                        Text("\(Int(used.rounded()))% used").monospacedDigit()
+                    }
                     .font(.system(size: 12))
-                    .foregroundStyle(palette.secondary)
+                    QuotaMeter(percent: used, color: palette.accent)
+                }
+                .accessibilityElement(children: .combine)
             }
         }
         .padding(.horizontal, PanelMetrics.horizontalPadding)
         .padding(.vertical, 12)
     }
 
-    private func metricBlock(_ title: String, _ value: String, _ caption: String, access: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            sectionTitle(title)
-            Text(value)
-                .font(.system(size: 32, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(palette.ink)
-                .accessibilityLabel(access ?? "\(title) \(value). \(caption)")
-            Text(caption)
-                .font(.system(size: 11))
-                .foregroundStyle(palette.secondary)
-                .lineLimit(2)
-                .frame(maxWidth: 148, alignment: .leading)
+    private func dailyBudgetCaption(_ pace: PaceReport?) -> String {
+        guard let pace, let used = pace.todaySlicePercent else { return daySentence(pace) }
+        if used > 100 {
+            let prefix = pace.todayKind == .partial ? "At least " : ""
+            return "\(prefix)\(Int((used - 100).rounded()))% over today’s budget"
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(access ?? "\(title) \(value). \(caption)")
+        if pace.todayKind == .partial { return "At least \(Int(used.rounded()))% of today’s budget used" }
+        return "\(Int((100 - used).rounded()))% of today’s budget left"
     }
 
     private func paceSection(_ pace: PaceReport) -> some View {
@@ -441,13 +417,14 @@ struct MainView: View {
                     let current = slice.index == pace.todayIndex
                     VStack(spacing: 1) {
                         Text(weekday(slice.start))
+                        Text("\(LondonClock.calendar().component(.day, from: slice.start))")
                         Text(sliceFigure(slice))
                             .monospacedDigit()
                     }
                     .font(.system(size: 11, weight: current ? .semibold : .regular))
                     .foregroundStyle(current ? palette.ink : palette.secondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                     .background(current ? palette.ink.opacity(0.1) : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     .accessibilityElement(children: .ignore)
@@ -463,12 +440,12 @@ struct MainView: View {
                 .foregroundStyle(palette.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
         .padding(.bottom, 8)
     }
 
     private var accountsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             sectionTitle("Accounts")
             ForEach(model.store.accounts) { account in
                 accountRow(account)
@@ -513,7 +490,7 @@ struct MainView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
-                    .tint(palette.ink)
+                    .tint(.red)
                     .disabled(model.isBusy(account.id) || !model.libraryReady)
                     Button("Cancel") { confirmingRemoval = false }
                         .buttonStyle(.bordered)
@@ -522,8 +499,8 @@ struct MainView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
+        .padding(.vertical, 6)
     }
 
     private func accountRow(_ account: AccountRecord) -> some View {
@@ -550,22 +527,25 @@ struct MainView: View {
                     .foregroundStyle(palette.ink)
             }
             .padding(.horizontal, 8)
-            .frame(minHeight: PanelMetrics.controlHeight)
+            .frame(minHeight: 28)
             .contentShape(Rectangle())
             .background(selected ? palette.ink.opacity(0.07) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: PanelMetrics.cornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(!model.libraryReady)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(account.label). \(rowSubtitle(account)). \(accountFigure(account, sample: sample))")
+        .accessibilityAddTraits(.isButton)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func historySection(_ totals: UsageTotals, weeks: [WeekStat], sample: UsageSample?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            UsageChartView(buckets: sample?.dailyBuckets ?? [])
+                .id(model.selectedAccount?.id)
+            hairline
             HStack {
-                sectionTitle("Weeks")
+                sectionTitle("Weekly history")
                 Spacer()
                 Text(totals.weeks == 1 ? "1 in the library" : "\(totals.weeks) in the library")
                     .font(.system(size: 10))
@@ -623,9 +603,9 @@ struct MainView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(palette.secondary)
                 .padding(.top, 4)
-            DisclosureGroup("Daily tokens · \(dayCount(Int64(sample?.dailyBuckets.count ?? 0)))", isExpanded: $dailyExpanded) {
+            DisclosureGroup("Exact daily values · \(dayCount(Int64(sample?.dailyBuckets.count ?? 0)))", isExpanded: $dailyExpanded) {
                 if let buckets = sample?.dailyBuckets, !buckets.isEmpty {
-                    ForEach(Array(buckets.sorted { $0.startDate > $1.startDate }.enumerated()), id: \.offset) { _, bucket in
+                    ForEach(Array(buckets.sorted { $0.startDate > $1.startDate }.prefix(visibleDailyCount).enumerated()), id: \.offset) { _, bucket in
                         HStack {
                             Text(bucket.startDate)
                             Spacer(minLength: 8)
@@ -637,6 +617,19 @@ struct MainView: View {
                         .accessibilityLabel("\(bucket.startDate): \(UsageFormatting.exact(bucket.tokens)) tokens")
                         .padding(.vertical, 2)
                     }
+                    Text("Showing \(min(visibleDailyCount, buckets.count)) of \(buckets.count) days, newest first.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(palette.secondary)
+                    if visibleDailyCount < buckets.count {
+                        Button("Show \(min(14, buckets.count - visibleDailyCount)) more days") {
+                            visibleDailyCount += 14
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    if visibleDailyCount > 14 {
+                        Button("Show fewer days") { visibleDailyCount = 14 }
+                            .buttonStyle(.bordered)
+                    }
                 } else {
                     Text("No daily token totals supplied.")
                         .foregroundStyle(palette.secondary)
@@ -647,22 +640,24 @@ struct MainView: View {
             .tint(palette.secondary)
             .padding(.top, 6)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, PanelMetrics.horizontalPadding)
         .padding(.vertical, 8)
     }
 
     private func weekHistoryRow(_ week: WeekStat) -> some View {
-        HStack(spacing: 8) {
-            Text(week.complete ? "Ended \(LondonClock.dayLabel(week.resetsAt))" : "Resets \(LondonClock.dayLabel(week.resetsAt))")
+        HStack(spacing: 12) {
+            Text(week.complete ? "Ended \(LondonClock.dayLabel(week.resetsAt))" : "Open · resets \(LondonClock.dayLabel(week.resetsAt))")
                 .foregroundStyle(palette.ink)
-                .lineLimit(1)
-            Spacer(minLength: 8)
+                .frame(width: 132, alignment: .leading)
+            QuotaMeter(percent: week.usedPercent, color: week.complete ? palette.accent : palette.accent.opacity(0.65))
             Text("\(Int(week.usedPercent.rounded()))%")
                 .monospacedDigit()
                 .foregroundStyle(palette.ink)
-                .frame(width: 40, alignment: .trailing)
+                .frame(width: 36, alignment: .trailing)
         }
-        .font(.system(size: 12))
+        .font(.system(size: 11))
+        .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -693,11 +688,11 @@ struct MainView: View {
     private func summaryCell(_ title: String, _ value: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.system(size: 10))
+                .font(.system(size: 11))
                 .foregroundStyle(palette.secondary)
                 .lineLimit(1)
             Text(value)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(palette.ink)
                 .lineLimit(1)
@@ -715,29 +710,28 @@ struct MainView: View {
     }
 
     private var addForm: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Account name").font(.system(size: 11, weight: .medium))
             TextField("Name", text: $draft)
                 .focused($nameFocused)
                 .task { nameFocused = true }
                 .onSubmit { addDraftAccount() }
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13))
                 .foregroundStyle(palette.ink)
-                .tint(palette.ink)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-                .overlay(Rectangle().stroke(palette.hairline, lineWidth: 1))
+                .frame(minHeight: 32)
                 .disabled(!model.libraryReady)
+            nameValidation
             HStack(spacing: 12) {
                 Button("Add") {
                     addDraftAccount()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
-                .tint(palette.ink)
+                .tint(palette.accent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(!model.libraryReady)
-                Button("Cancel") { adding = false }
+                .disabled(!model.libraryReady || trimmedDraft.isEmpty)
+                Button("Cancel") { cancelEditing() }
                     .buttonStyle(.bordered)
                     .controlSize(.regular)
                     .keyboardShortcut(.cancelAction)
@@ -746,49 +740,68 @@ struct MainView: View {
     }
 
     private var renameForm: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Account name").font(.system(size: 11, weight: .medium))
             TextField("Name", text: $draft)
                 .focused($nameFocused)
                 .task { nameFocused = true }
                 .onSubmit { renameSelectedAccount() }
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13))
                 .foregroundStyle(palette.ink)
-                .tint(palette.ink)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-                .overlay(Rectangle().stroke(palette.hairline, lineWidth: 1))
+                .frame(minHeight: 32)
                 .disabled(!model.libraryReady)
+            nameValidation
             HStack(spacing: 12) {
                 Button("Save") { renameSelectedAccount() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
-                    .tint(palette.ink)
+                    .tint(palette.accent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!model.libraryReady)
-                Button("Cancel") {
-                    renaming = false
-                    draft = ""
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .keyboardShortcut(.cancelAction)
+                    .disabled(!model.libraryReady || trimmedDraft.isEmpty)
+                Button("Cancel") { cancelEditing() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .keyboardShortcut(.cancelAction)
             }
         }
     }
 
     private func addDraftAccount() {
-        model.addAccount(label: draft)
+        guard !trimmedDraft.isEmpty else { return }
+        model.addAccount(label: trimmedDraft)
         adding = false
         draft = ""
     }
 
     private func renameSelectedAccount() {
+        guard !trimmedDraft.isEmpty else { return }
         if let account = model.selectedAccount {
-            model.renameAccount(account.id, label: draft)
+            model.renameAccount(account.id, label: trimmedDraft)
         }
         renaming = false
         draft = ""
+    }
+
+    private var trimmedDraft: String {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @ViewBuilder
+    private var nameValidation: some View {
+        if trimmedDraft.isEmpty {
+            Label("Enter an account name.", systemImage: "exclamationmark.triangle")
+                .font(.system(size: 11))
+                .foregroundStyle(palette.warning)
+        }
+    }
+
+    private func cancelEditing() {
+        adding = false
+        renaming = false
+        confirmingRemoval = false
+        draft = ""
+        nameFocused = false
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -804,7 +817,7 @@ struct MainView: View {
             .foregroundStyle(palette.ink)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, PanelMetrics.horizontalPadding)
             .padding(.vertical, 6)
     }
 
@@ -820,7 +833,7 @@ struct MainView: View {
         if prominent {
             actionButtonLabel(title, icon: icon, destructive: destructive, disabled: disabled, action: action)
                 .buttonStyle(.borderedProminent)
-                .tint(palette.ink)
+                .tint(palette.accent)
         } else {
             actionButtonLabel(title, icon: icon, destructive: destructive, disabled: disabled, action: action)
                 .buttonStyle(.bordered)
@@ -905,16 +918,16 @@ struct MainView: View {
     private func heroCaption(_ pace: PaceReport?) -> String {
         switch pace?.todayKind {
         case .measured, .estimated:
-            return "of today's slice"
+            return "of today's daily budget"
         case .partial:
-            return "of today's slice, at least"
+            return "of today's daily budget, at least"
         default:
-            return "of today's slice"
+            return "of today's daily budget"
         }
     }
 
     private func heroAccess(pace: PaceReport?, sample: UsageSample?) -> String {
-        "Today \(heroNumber(pace: pace, sample: sample)). \(daySentence(pace))"
+        "Daily budget used \(heroNumber(pace: pace, sample: sample)). \(heroCaption(pace)). \(daySentence(pace))"
     }
 
     private func daySentence(_ pace: PaceReport?) -> String {

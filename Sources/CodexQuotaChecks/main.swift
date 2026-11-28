@@ -63,6 +63,7 @@ struct CodexQuotaChecks {
         await AppModelWorkflowChecks.run()
         await RefreshSchedulerChecks.run()
         await SessionChecks.run()
+        await AccountDetailsChecks.run()
         if Check.failures.isEmpty {
             print("CodexQuotaChecks passed")
         } else {
@@ -161,8 +162,10 @@ enum AppModelWorkflowChecks {
         defer { try? FileManager.default.removeItem(at: root) }
 
         model.addAccount(label: "Personal")
-        await settle()
         let first = model.store.accounts[0]
+        await waitUntil("initial account refresh") {
+            model.latestSample(for: first.id) != nil && !model.isBusy(first.id)
+        }
         Check.equal(first.id, "account-a")
         Check.equal(model.latestSample(for: first.id)?.usedPercent, 25)
         model.renameAccount(first.id, label: "Primary")
@@ -176,8 +179,10 @@ enum AppModelWorkflowChecks {
         Check.isNil(model.libraryNote)
 
         model.addAccount(label: "Work")
-        await settle()
         let second = model.store.accounts[1]
+        await waitUntil("second account refresh") {
+            model.latestSample(for: second.id) != nil && !model.isBusy(second.id)
+        }
         model.select(first.id)
         Check.equal(model.selectedAccount?.id, first.id)
         let healthyPresentation = model.menuBarPresentation
@@ -196,15 +201,15 @@ enum AppModelWorkflowChecks {
 
         state.suspendSignIn = true
         model.signIn(first.id)
-        await Task.yield()
+        await waitUntil("sign-in started") { state.signInStarts == 1 }
         model.cancelSignIn(first.id)
-        await settle()
+        await waitUntil("sign-in cancelled") { !model.isBusy(first.id) }
         Check.equal(model.latestSample(for: first.id)?.usedPercent, 25)
         Check.ok(!model.isBusy(first.id))
         state.suspendSignIn = false
         state.signInResults = [.success(reading)]
         model.signIn(first.id)
-        await settle()
+        await waitUntil("sign-in completed") { !model.isBusy(first.id) }
         Check.equal(model.phase[first.id], .idle)
         Check.equal(state.signInStarts, 2)
 
@@ -234,8 +239,15 @@ enum AppModelWorkflowChecks {
         Check.ok(!model.authRequired.contains(second.id))
     }
 
-    private static func settle() async {
-        for _ in 0..<20 { await Task.yield() }
+    private static func waitUntil(_ description: String, condition: () -> Bool) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !condition() {
+            guard ContinuousClock.now < deadline else {
+                Check.fail("Timed out waiting for \(description)")
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 }
 
@@ -833,8 +845,8 @@ enum UsageChecks {
             optionalStatisticsArePartial: false
         )
         var failed = UsageReading(
-            identity: AccountIdentity(type: "chatgpt", email: "new@example.com", planType: "plus"),
-            weekly: WeeklyWindow(limitId: "codex", limitName: "Codex", planType: "plus", usedPercent: 20, windowDurationMins: 10_080, resetsAt: recoveredTime, reached: nil),
+            identity: .workflow(type: "chatgpt", email: "new@example.com", planType: "plus"),
+            weekly: .workflow(limitId: "codex", limitName: "Codex", planType: "plus", usedPercent: 20, windowDurationMins: 10_080, resetsAt: recoveredTime, reached: nil),
             shortWindow: ShortWindow(usedPercent: 30, windowDurationMins: 300, resetsAt: recoveredTime),
             lifetimeTokens: nil,
             peakDailyTokens: nil,
@@ -1211,10 +1223,10 @@ enum HistoryChecks {
             var failure: Error? = CocoaError(.fileWriteNoPermission)
         }
         let control = RemovalControl()
-        let history = HistoryStore(directory: directory) { url in
+        let history = HistoryStore(directory: directory, removeItem: { url in
             if let failure = control.failure { throw failure }
             try FileManager.default.removeItem(at: url)
-        }
+        })
         do {
             let accountID = "selected"
             let home = try history.makeHome(id: accountID)
@@ -1401,5 +1413,255 @@ enum FormattingChecks {
         Check.equal(UsageFormatting.duration(60), "1m 0s")
         Check.equal(UsageFormatting.duration(7322), "2h 2m")
         Check.equal(UsageFormatting.duration(90_000), "1d 1h")
+    }
+}
+
+@MainActor
+private final class DetailsCheckNotifications: LocalNotificationControlling {
+    var permission: LocalNotificationPermission = .authorized
+    func refreshPermission() async {}
+    func requestPermission() async -> Bool { true }
+    func openNotificationSettings() {}
+    func deliver(accountLabel: String, event: QuotaAlertEvent) async -> Bool { true }
+}
+
+@MainActor
+private final class DetailsCheckLoginItem: LoginItemControlling {
+    var error: String? { nil }
+    var canConfigure: Bool { false }
+    var isEnabled: Bool { false }
+    var needsApproval: Bool { false }
+    func refresh() {}
+    func setEnabled(_ enabled: Bool) {}
+    func openSettings() {}
+}
+
+private actor WorkspaceGate {
+    var continuation: CheckedContinuation<WorkspaceMessagesDetails, Error>?
+    var usageContinuation: CheckedContinuation<ConversationUsageDetails?, Error>?
+    var calls = 0
+    var failConversations = false
+    var holdUsage = false
+    var hasUsageWaiter: Bool { usageContinuation != nil }
+
+    func holdUsageRequests() { holdUsage = true }
+
+    func usage(service: QuotaService, home: String, id: String) async throws -> ConversationUsageDetails? {
+        if holdUsage {
+            return try await withCheckedThrowingContinuation { usageContinuation = $0 }
+        }
+        return try await service.conversationUsage(home: home, threadID: id)
+    }
+
+    func releaseUsage(id: String) throws {
+        let value = try AccountDetailsParsing.conversationUsage(.object([
+            "threadUsage": .object(["threadId": .string(id), "estimatedUsageCreditsMicros": .number(9_000_000)])
+        ]), threadID: id)
+        usageContinuation?.resume(returning: value)
+        usageContinuation = nil
+    }
+
+    func failConversationRequests() { failConversations = true }
+
+    func conversations(service: QuotaService, home: String, cursor: String?, archived: Bool) async throws -> ConversationPage {
+        if failConversations { throw QuotaFailure.refused("thread/list") }
+        return try await service.conversations(home: home, cursor: cursor, archived: archived)
+    }
+
+    func load() async throws -> WorkspaceMessagesDetails {
+        calls += 1
+        return try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+
+    func release() throws {
+        let value = try AccountDetailsParsing.workspace(.object(["featureEnabled": .bool(true), "messages": .array([])]))
+        continuation?.resume(returning: value)
+        continuation = nil
+    }
+}
+
+@MainActor
+enum AccountDetailsChecks {
+    static func run() async {
+        await protocolAndPersistence()
+        await loadingIsolation()
+        parsingBoundaries()
+    }
+
+    private static func protocolAndPersistence() async {
+        let service = QuotaService(launch: { SessionChecks.launch() }, extraEnvironment: ["CODEX_QUOTA_MOCK": "details"])
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("quota-details-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        do {
+            let reading = try await service.refresh(home: directory.path)
+            let details = reading.quotaDetails
+            Check.equal(details?.buckets.count, 2)
+            let codex = details?.buckets.first { $0.id == "codex" }
+            Check.equal(codex?.credits?.balance, "12.50")
+            Check.equal(codex?.credits?.unlimited, false)
+            Check.equal(codex?.monthlyLimit?.remainingPercent, 68)
+            Check.equal(codex?.spendControlReached, false)
+            Check.equal(codex?.primary?.resetsAt, Date(timeIntervalSince1970: 1_800_000_000))
+            Check.equal(details?.buckets.first { $0.id == "review" }?.primary?.usedPercent, 0)
+            Check.isNil(details?.buckets.first { $0.id == "review" }?.primary?.durationMinutes)
+            Check.equal(details?.availableResets, 2)
+            Check.equal(details?.resets?.count, 1)
+            Check.isNil(details?.resets?.first?.expiresAt)
+
+            guard let sample = UsageSample.merging(accountId: "account", sampledAt: Date(), reading: reading, previous: nil) else {
+                Check.fail("details reading failed to make a sample")
+                return
+            }
+            let history = HistoryStore(directory: directory)
+            var store = StoreFile.empty()
+            store.samples = [sample]
+            try history.save(store)
+            Check.equal(try history.load().store.samples.first?.quotaDetails, details)
+            var empty = reading
+            empty.quotaDetails = AccountDetailsParsing.quota(.object([:]))
+            let replaced = UsageSample.merging(accountId: "account", sampledAt: Date(), reading: empty, previous: sample)
+            Check.equal(replaced?.quotaDetails?.buckets.count, 0)
+            Check.isNil(replaced?.quotaDetails?.availableResets)
+
+            let messages = try await service.workspaceMessages(home: directory.path)
+            Check.equal(messages.messages.first?.body, "Test workspace notice")
+            let page1 = try await service.conversations(home: directory.path, cursor: nil, archived: false)
+            Check.equal(page1.conversations.first?.title, "Test conversation 1")
+            Check.equal(page1.nextCursor, "page-2")
+            let page2 = try await service.conversations(home: directory.path, cursor: page1.nextCursor, archived: false)
+            Check.equal(page2.conversations.first?.title, "Test conversation 2")
+            Check.isNil(page2.nextCursor)
+            let archived = try await service.conversations(home: directory.path, cursor: nil, archived: true)
+            Check.equal(archived.conversations.first?.title, "Archived Test conversation 1")
+            let threadID = "01900000-0000-7000-8000-000000000001"
+            let usage = try await service.conversationUsage(home: directory.path, threadID: threadID)
+            Check.equal(usage?.creditsMicros, 1_250_000)
+            Check.isNil(usage?.usdMicros)
+            Check.equal(usage?.groups.first?.model, "test-model")
+            Check.equal(usage?.groups.first?.cachedInputTokens, 900)
+            Check.equal(usage?.groups.first?.totalTokens, 1020)
+            let zeroCost = try await service.conversationUsage(home: directory.path, threadID: "01900000-0000-7000-8000-000000000002")
+            Check.equal(zeroCost?.usdMicros, 0)
+        } catch {
+            Check.fail("details protocol/persistence check failed: \(error)")
+        }
+    }
+
+    private static func parsingBoundaries() {
+        do {
+            let multiple = try JSONValue.parse(Data(#"{"rateLimitsByLimitId":{"review":{"primary":{"usedPercent":95,"windowDurationMins":300}},"codex":{"primary":{"usedPercent":25,"windowDurationMins":300}}}}"#.utf8))
+            let overview = UsageParsing.reading(account: .object([:]), limits: multiple, usage: .object([:]))
+            Check.equal(overview.shortWindow?.usedPercent, 25)
+            Check.equal(overview.quotaDetails?.buckets.count, 2)
+            let nilDetails = AccountDetailsParsing.quota(.object(["rateLimitResetCredits": .null]))
+            Check.isNil(nilDetails.availableResets)
+            Check.isNil(nilDetails.resets)
+            let zeroDetails = AccountDetailsParsing.quota(.object([
+                "rateLimitResetCredits": .object(["availableCount": .number(0), "credits": .array([])])
+            ]))
+            Check.equal(zeroDetails.availableResets, 0)
+            Check.equal(zeroDetails.resets?.count, 0)
+            let disabled = try AccountDetailsParsing.workspace(.object(["featureEnabled": .bool(false), "messages": .array([])]))
+            Check.equal(disabled.featureEnabled, false)
+            Check.throws { _ = try AccountDetailsParsing.workspace(.object([:])) }
+            Check.throws { _ = try AccountDetailsParsing.conversations(.object([:])) }
+            let missing = try AccountDetailsParsing.conversationUsage(.object(["threadUsage": .null]), threadID: "test")
+            Check.isNil(missing)
+            Check.throws {
+                _ = try AccountDetailsParsing.conversationUsage(.object([
+                    "threadUsage": .object(["threadId": .string("different")])
+                ]), threadID: "test")
+            }
+        } catch {
+            Check.fail("details parsing boundaries failed: \(error)")
+        }
+    }
+
+    private static func loadingIsolation() async {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("quota-details-model-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let history = HistoryStore(directory: directory)
+        let gate = WorkspaceGate()
+        let realService = QuotaService(launch: { SessionChecks.launch() }, extraEnvironment: ["CODEX_QUOTA_MOCK": "details"])
+        do {
+            let homeA = try history.makeHome(id: "a")
+            let homeB = try history.makeHome(id: "b")
+            var store = StoreFile.empty()
+            store.accounts = [
+                AccountRecord(id: "a", label: "First", codexHome: homeA, createdAt: Date()),
+                AccountRecord(id: "b", label: "Second", codexHome: homeB, createdAt: Date())
+            ]
+            store.selectedAccountId = "a"
+            try history.save(store)
+            var dependencies = AppQuotaService(realService)
+            dependencies.workspaceMessages = { _ in try await gate.load() }
+            dependencies.conversations = { home, cursor, archived in
+                try await gate.conversations(service: realService, home: home, cursor: cursor, archived: archived)
+            }
+            dependencies.conversationUsage = { home, id in
+                try await gate.usage(service: realService, home: home, id: id)
+            }
+            dependencies.signOut = { _ in }
+            let model = AppModel(history: AppHistory(history), service: dependencies,
+                                 notifications: DetailsCheckNotifications(), loginItem: DetailsCheckLoginItem(), openBrowser: { _ in })
+            let task = Task { await model.loadWorkspaceDetails("a") }
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while await gate.calls == 0, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            guard await gate.calls == 1 else {
+                task.cancel()
+                Check.fail("workspace request did not start within five seconds")
+                return
+            }
+            Check.ok(model.workspaceDetails["a"]?.isLoading == true)
+            await model.loadWorkspaceDetails("a")
+            Check.equal(await gate.calls, 1)
+            Check.isNil(model.workspaceDetails["b"])
+            await model.signOut("a")
+            try await gate.release()
+            await task.value
+            Check.isNil(model.workspaceDetails["a"])
+            Check.ok(model.authRequired.contains("a"))
+
+            await model.loadConversations("b", archived: false)
+            let key = AppModel.conversationsKey("b", archived: false)
+            Check.equal(model.conversationDetails[key]?.value?.conversations.count, 1)
+            await model.loadConversations("b", archived: false, more: true)
+            Check.equal(model.conversationDetails[key]?.value?.conversations.count, 2)
+            Check.isNil(model.conversationDetails[key]?.value?.nextCursor)
+            await gate.failConversationRequests()
+            await model.loadConversations("b", archived: false, force: true)
+            Check.notNil(model.conversationDetails[key]?.error)
+            Check.equal(model.conversationDetails[key]?.value?.conversations.count, 2)
+            Check.equal(model.conversationDetails[key]?.isLoading, false)
+            Check.isNil(model.conversationDetails[AppModel.conversationsKey("b", archived: true)])
+            let threadID = "01900000-0000-7000-8000-000000000001"
+            await model.loadConversationUsage("b", threadID: threadID)
+            let usageKey = AppModel.conversationUsageKey("b", threadID: threadID)
+            Check.notNil(model.conversationUsageDetails[usageKey]?.value)
+            await gate.holdUsageRequests()
+            let cancelledUsage = Task { await model.loadConversationUsage("b", threadID: threadID, force: true) }
+            let usageDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while !(await gate.hasUsageWaiter), ContinuousClock.now < usageDeadline {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            guard await gate.hasUsageWaiter else {
+                cancelledUsage.cancel()
+                Check.fail("conversation usage request did not start within five seconds")
+                return
+            }
+            cancelledUsage.cancel()
+            try await gate.releaseUsage(id: threadID)
+            await cancelledUsage.value
+            Check.equal(model.conversationUsageDetails[usageKey]?.value?.creditsMicros, 1_250_000)
+            Check.notNil(model.conversationUsageDetails[usageKey]?.error)
+            model.removeAccount("b")
+            Check.isNil(model.conversationDetails[key])
+            Check.isNil(model.conversationUsageDetails[usageKey])
+            Check.ok(model.refreshFailures.isEmpty)
+        } catch {
+            Check.fail("details model isolation failed: \(error)")
+        }
     }
 }
